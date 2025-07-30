@@ -15,6 +15,7 @@ const Login = () => {
 
       if (res.data?.token) {
         localStorage.setItem("auth_token", res.data.token);
+        //console.log("Login successful, token received:", res.data.token);
         localStorage.setItem("tokenExpiry", Date.now() + 24 * 60 * 60 * 1000); // 24h expiry
         navigate("/dashboard");
       } else {

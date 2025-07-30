@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Plus, Package, Search, MoreVertical, Edit, Trash2, ArrowLeft, Save, X } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   Dialog,
   DialogContent,
@@ -30,86 +31,32 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { inventoryAPI } from "@/services/api";
 
 // Types
 interface InventoryItem {
   id: number;
   name: string;
   category: string;
+  subtype?: string;
   unit: string;
   price: number;
-  stock: number;
-  productCode: string;
-  image: string;
-  lowStock: boolean;
+  quantity: number;
+  lowStockLimit?: number;
+  lowStockAlert: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
-// Mock data
-const initialInventory: InventoryItem[] = [
-  {
-    id: 1,
-    name: "Goat Meat - Fresh Cut",
-    category: "Meat",
-    unit: "kg",
-    price: 1200,
-    stock: 25,
-    productCode: "GM001",
-    image: "/api/placeholder/300/200",
-    lowStock: false
-  },
-  {
-    id: 2,
-    name: "Chicken Breast - Boneless", 
-    category: "Poultry",
-    unit: "kg",
-    price: 800,
-    stock: 8,
-    productCode: "CB001",
-    image: "/api/placeholder/300/200",
-    lowStock: true
-  },
-  {
-    id: 3,
-    name: "Camel Meat - Premium",
-    category: "Meat", 
-    unit: "kg",
-    price: 1500,
-    stock: 15,
-    productCode: "CM001",
-    image: "/api/placeholder/300/200",
-    lowStock: false
-  },
-  {
-    id: 4,
-    name: "Farm Fresh Eggs",
-    category: "Dairy",
-    unit: "dozen",
-    price: 450,
-    stock: 5,
-    productCode: "EG001", 
-    image: "/api/placeholder/300/200",
-    lowStock: true
-  },
-  {
-    id: 5,
-    name: "Berbere Spice Mix",
-    category: "Spices",
-    unit: "g",
-    price: 150,
-    stock: 50,
-    productCode: "SP001",
-    image: "/api/placeholder/300/200",
-    lowStock: false
-  }
-];
-
 export default function InventoryManagement() {
-  const [inventory, setInventory] = useState<InventoryItem[]>(initialInventory);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
 
   // Form state
@@ -118,20 +65,40 @@ export default function InventoryManagement() {
     category: "",
     unit: "",
     price: "",
-    stock: "",
+    quantity: "",
   });
 
   const categories = ["All", "Meat", "Poultry", "Dairy", "Spices"];
   const units = ["kg", "g", "lbs", "dozen", "pieces", "liters"];
   
+  // Fetch inventory data
+  const fetchInventory = async () => {
+    try {
+      setLoading(true);
+      const response = await inventoryAPI.getAll();
+      setInventory(response.data);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to fetch inventory data",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+  }, []);
+  
   const filteredInventory = inventory.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.productCode.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
-  const lowStockCount = inventory.filter(item => item.lowStock).length;
+  const lowStockCount = inventory.filter(item => item.lowStockAlert).length;
 
   const resetForm = () => {
     setFormData({
@@ -139,19 +106,12 @@ export default function InventoryManagement() {
       category: "",
       unit: "",
       price: "",
-      stock: "",
+      quantity: "",
     });
   };
 
-  const generateProductCode = (name: string, category: string) => {
-    const nameInitials = name.split(' ').map(word => word[0]).join('').toUpperCase();
-    const categoryInitial = category[0].toUpperCase();
-    const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    return `${categoryInitial}${nameInitials}${randomNum}`;
-  };
-
-  const handleAddItem = () => {
-    if (!formData.name || !formData.category || !formData.unit || !formData.price || !formData.stock) {
+  const handleAddItem = async () => {
+    if (!formData.name || !formData.category || !formData.unit || !formData.price || !formData.quantity) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -160,29 +120,37 @@ export default function InventoryManagement() {
       return;
     }
 
-    const newItem: InventoryItem = {
-      id: Date.now(),
-      name: formData.name,
-      category: formData.category,
-      unit: formData.unit,
-      price: parseFloat(formData.price),
-      stock: parseInt(formData.stock),
-      productCode: generateProductCode(formData.name, formData.category),
-      image: "/api/placeholder/300/200",
-      lowStock: parseInt(formData.stock) < 10,
-    };
+    try {
+      setSubmitting(true);
+      const newItemData = {
+        name: formData.name,
+        category: formData.category,
+        unit: formData.unit,
+        price: parseFloat(formData.price),
+        quantity: parseInt(formData.quantity),
+      };
 
-    setInventory([...inventory, newItem]);
-    setShowAddDialog(false);
-    resetForm();
-    toast({
-      title: "Success",
-      description: "Item added successfully",
-    });
+      await inventoryAPI.create(newItemData);
+      await fetchInventory(); // Refresh the list
+      setShowAddDialog(false);
+      resetForm();
+      toast({
+        title: "Success",
+        description: "Item added successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add item",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleUpdateItem = () => {
-    if (!selectedProduct || !formData.name || !formData.category || !formData.unit || !formData.price || !formData.stock) {
+  const handleUpdateItem = async () => {
+    if (!selectedProduct || !formData.name || !formData.category || !formData.unit || !formData.price || !formData.quantity) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -191,38 +159,60 @@ export default function InventoryManagement() {
       return;
     }
 
-    const updatedItem: InventoryItem = {
-      ...selectedProduct,
-      name: formData.name,
-      category: formData.category,
-      unit: formData.unit,
-      price: parseFloat(formData.price),
-      stock: parseInt(formData.stock),
-      lowStock: parseInt(formData.stock) < 10,
-    };
+    try {
+      setSubmitting(true);
+      const updateData = {
+        name: formData.name,
+        category: formData.category,
+        unit: formData.unit,
+        price: parseFloat(formData.price),
+        quantity: parseInt(formData.quantity),
+      };
 
-    setInventory(inventory.map(item => 
-      item.id === selectedProduct.id ? updatedItem : item
-    ));
-    
-    setSelectedProduct(updatedItem);
-    setEditMode(false);
-    resetForm();
-    toast({
-      title: "Success",
-      description: "Item updated successfully",
-    });
+      const response = await inventoryAPI.update(selectedProduct.id.toString(), updateData);
+      
+      // Update the selected product with the response data
+      const updatedItem = { ...response.data, lowStockAlert: response.data.quantity <= (response.data.lowStockLimit || 10) };
+      setSelectedProduct(updatedItem);
+      
+      // Refresh the inventory list
+      await fetchInventory();
+      
+      setEditMode(false);
+      resetForm();
+      toast({
+        title: "Success",
+        description: "Item updated successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update item",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const handleDeleteItem = (id: number) => {
-    setInventory(inventory.filter(item => item.id !== id));
-    if (selectedProduct?.id === id) {
-      setSelectedProduct(null);
+  const handleDeleteItem = async (id: number) => {
+    try {
+      await inventoryAPI.delete(id.toString());
+      await fetchInventory(); // Refresh the list
+      if (selectedProduct?.id === id) {
+        setSelectedProduct(null);
+      }
+      toast({
+        title: "Success",
+        description: "Item deleted successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete item",
+        variant: "destructive",
+      });
     }
-    toast({
-      title: "Success",
-      description: "Item deleted successfully",
-    });
   };
 
   const handleViewProduct = (product: InventoryItem) => {
@@ -237,7 +227,7 @@ export default function InventoryManagement() {
       category: product.category,
       unit: product.unit,
       price: product.price.toString(),
-      stock: product.stock.toString(),
+      quantity: product.quantity.toString(),
     });
     setEditMode(true);
   };
@@ -246,6 +236,16 @@ export default function InventoryManagement() {
     resetForm();
     setShowAddDialog(true);
   };
+
+  if (loading) {
+    return (
+      <Layout title="Inventory Management" showSearch={false}>
+        <div className="flex items-center justify-center h-64">
+          <LoadingSpinner />
+        </div>
+      </Layout>
+    );
+  }
 
   // Product Detail View
   if (selectedProduct) {
@@ -264,8 +264,8 @@ export default function InventoryManagement() {
             <div className="flex gap-2">
               {editMode ? (
                 <>
-                  <Button onClick={handleUpdateItem} variant="hero">
-                    <Save className="h-4 w-4 mr-2" />
+                  <Button onClick={handleUpdateItem} variant="hero" disabled={submitting}>
+                    {submitting ? <LoadingSpinner /> : <Save className="h-4 w-4 mr-2" />}
                     Save Changes
                   </Button>
                   <Button 
@@ -274,6 +274,7 @@ export default function InventoryManagement() {
                       setEditMode(false);
                       resetForm();
                     }}
+                    disabled={submitting}
                   >
                     <X className="h-4 w-4 mr-2" />
                     Cancel
@@ -294,12 +295,12 @@ export default function InventoryManagement() {
               <CardContent className="p-6">
                 <div className="aspect-square bg-muted rounded-lg overflow-hidden mb-4">
                   <img 
-                    src={selectedProduct.image} 
+                    src="/api/placeholder/300/200" 
                     alt={selectedProduct.name}
                     className="w-full h-full object-cover"
                   />
                 </div>
-                {selectedProduct.lowStock && (
+                {selectedProduct.lowStockAlert && (
                   <Badge className="bg-warning text-warning-foreground">
                     Low Stock Alert
                   </Badge>
@@ -321,11 +322,12 @@ export default function InventoryManagement() {
                         id="edit-name"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        disabled={submitting}
                       />
                     </div>
                     <div>
                       <Label htmlFor="edit-category">Category</Label>
-                      <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                      <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })} disabled={submitting}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select category" />
                         </SelectTrigger>
@@ -340,7 +342,7 @@ export default function InventoryManagement() {
                     </div>
                     <div>
                       <Label htmlFor="edit-unit">Unit</Label>
-                      <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
+                      <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })} disabled={submitting}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select unit" />
                         </SelectTrigger>
@@ -354,21 +356,23 @@ export default function InventoryManagement() {
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="edit-price">Price (₦)</Label>
+                      <Label htmlFor="edit-price">Price (SH  )</Label>
                       <Input
                         id="edit-price"
                         type="number"
                         value={formData.price}
                         onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                        disabled={submitting}
                       />
                     </div>
                     <div>
-                      <Label htmlFor="edit-stock">Stock Quantity</Label>
+                      <Label htmlFor="edit-quantity">Stock Quantity</Label>
                       <Input
-                        id="edit-stock"
+                        id="edit-quantity"
                         type="number"
-                        value={formData.stock}
-                        onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                        value={formData.quantity}
+                        onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                        disabled={submitting}
                       />
                     </div>
                   </>
@@ -379,8 +383,8 @@ export default function InventoryManagement() {
                       <p className="text-lg font-semibold">{selectedProduct.name}</p>
                     </div>
                     <div>
-                      <Label>Product Code</Label>
-                      <p className="text-muted-foreground">{selectedProduct.productCode}</p>
+                      <Label>Product ID</Label>
+                      <p className="text-muted-foreground">#{selectedProduct.id}</p>
                     </div>
                     <div>
                       <Label>Category</Label>
@@ -388,21 +392,21 @@ export default function InventoryManagement() {
                     </div>
                     <div>
                       <Label>Price per {selectedProduct.unit}</Label>
-                      <p className="text-xl font-bold">₦{selectedProduct.price.toLocaleString()}</p>
+                      <p className="text-xl font-bold">SH   {selectedProduct.price.toLocaleString()}</p>
                     </div>
                     <div>
                       <Label>Current Stock</Label>
                       <p className={cn(
                         "text-lg font-semibold",
-                        selectedProduct.lowStock ? "text-warning" : "text-success"
+                        selectedProduct.lowStockAlert ? "text-warning" : "text-success"
                       )}>
-                        {selectedProduct.stock} {selectedProduct.unit}
+                        {selectedProduct.quantity} {selectedProduct.unit}
                       </p>
                     </div>
                     <div>
                       <Label>Total Value</Label>
                       <p className="text-lg font-semibold">
-                        ₦{(selectedProduct.price * selectedProduct.stock).toLocaleString()}
+                        SH   {(selectedProduct.price * selectedProduct.quantity).toLocaleString()}
                       </p>
                     </div>
                   </>
@@ -462,7 +466,7 @@ export default function InventoryManagement() {
                 <Package className="h-5 w-5 text-primary" />
                 <div>
                   <p className="text-sm text-muted-foreground">Total Value</p>
-                  <p className="text-2xl font-bold">₦{inventory.reduce((acc, item) => acc + (item.price * item.stock), 0).toLocaleString()}</p>
+                  <p className="text-2xl font-bold">SH   {inventory.reduce((acc, item) => acc + (item.price * item.quantity), 0).toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
@@ -475,7 +479,7 @@ export default function InventoryManagement() {
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name or product code..."
+                placeholder="Search by name..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -512,11 +516,11 @@ export default function InventoryManagement() {
             >
               <div className="aspect-video bg-muted relative">
                 <img 
-                  src={item.image} 
+                  src="/api/placeholder/300/200" 
                   alt={item.name}
                   className="w-full h-full object-cover"
                 />
-                {item.lowStock && (
+                {item.lowStockAlert && (
                   <Badge className="absolute top-2 right-2 bg-warning text-warning-foreground">
                     Low Stock
                   </Badge>
@@ -527,7 +531,7 @@ export default function InventoryManagement() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <CardTitle className="text-base truncate">{item.name}</CardTitle>
-                    <p className="text-sm text-muted-foreground">{item.productCode}</p>
+                    <p className="text-sm text-muted-foreground">ID: #{item.id}</p>
                   </div>
                   
                   <DropdownMenu>
@@ -564,16 +568,16 @@ export default function InventoryManagement() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Price/{item.unit}</span>
-                    <span className="font-semibold">₦{item.price.toLocaleString()}</span>
+                    <span className="font-semibold">SH   {item.price.toLocaleString()}</span>
                   </div>
                   
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Stock</span>
                     <span className={cn(
                       "font-semibold",
-                      item.lowStock ? "text-warning" : "text-success"
+                      item.lowStockAlert ? "text-warning" : "text-success"
                     )}>
-                      {item.stock} {item.unit}
+                      {item.quantity} {item.unit}
                     </span>
                   </div>
                   
@@ -619,11 +623,12 @@ export default function InventoryManagement() {
                   placeholder="Enter item name"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  disabled={submitting}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="category">Category</Label>
-                <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })} disabled={submitting}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
@@ -638,7 +643,7 @@ export default function InventoryManagement() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="unit">Unit</Label>
-                <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })}>
+                <Select value={formData.unit} onValueChange={(value) => setFormData({ ...formData, unit: value })} disabled={submitting}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select unit" />
                   </SelectTrigger>
@@ -652,13 +657,14 @@ export default function InventoryManagement() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="price">Price (₦)</Label>
+                <Label htmlFor="price">Price (SH   )</Label>
                 <Input
                   id="price"
                   type="number"
                   placeholder="Enter price"
                   value={formData.price}
                   onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                  disabled={submitting}
                 />
               </div>
               <div className="space-y-2">
@@ -667,8 +673,9 @@ export default function InventoryManagement() {
                   id="quantity"
                   type="number"
                   placeholder="Enter quantity"
-                  value={formData.stock}
-                  onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                  disabled={submitting}
                 />
               </div>
             </div>
@@ -676,11 +683,11 @@ export default function InventoryManagement() {
               <Button variant="outline" onClick={() => {
                 setShowAddDialog(false);
                 resetForm();
-              }}>
+              }} disabled={submitting}>
                 Cancel
               </Button>
-              <Button onClick={handleAddItem} variant="hero">
-                Add Item
+              <Button onClick={handleAddItem} variant="hero" disabled={submitting}>
+                {submitting ? <LoadingSpinner /> : "Add Item"}
               </Button>
             </DialogFooter>
           </DialogContent>

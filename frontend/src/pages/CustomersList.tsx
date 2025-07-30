@@ -1,10 +1,21 @@
 import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, Phone, User, MoreVertical, Edit, Trash2, CreditCard } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,60 +24,83 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { customersAPI } from "@/services/api";
+import { useToast } from "@/hooks/use-toast";
 
-// Mock data - replace with API call
-const mockCustomers = [
-  {
-    id: 1,
-    name: "Ahmed Hassan",
-    phone: "+234 801 234 5678",
-    totalPurchases: 45000,
-    lastPurchase: "2024-01-20",
-    accountBalance: 0,
-    status: "Active"
-  },
-  {
-    id: 2,
-    name: "Sarah Mohammed", 
-    phone: "+234 802 345 6789",
-    totalPurchases: 28500,
-    lastPurchase: "2024-01-19",
-    accountBalance: -2500,
-    status: "Active"
-  },
-  {
-    id: 3,
-    name: "Ibrahim Ali",
-    phone: "+234 803 456 7890", 
-    totalPurchases: 67200,
-    lastPurchase: "2024-01-20",
-    accountBalance: 1500,
-    status: "VIP"
-  },
-  {
-    id: 4,
-    name: "Fatima Abubakar",
-    phone: "+234 804 567 8901",
-    totalPurchases: 12000,
-    lastPurchase: "2024-01-18",
-    accountBalance: 0,
-    status: "Active"
-  },
-  {
-    id: 5,
-    name: "Yusuf Garba",
-    phone: "+234 805 678 9012",
-    totalPurchases: 89000,
-    lastPurchase: "2024-01-15",
-    accountBalance: -5000,
-    status: "VIP"
-  }
-];
+// Types
+interface Customer {
+  id: number;
+  name: string;
+  phone: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CustomerAccount {
+  balance: number;
+  status: string;
+  transactions: Array<{
+    id: number;
+    amount: number;
+    reason: string;
+    createdAt: string;
+  }>;
+}
 
 export default function CustomersList() {
   const [searchTerm, setSearchTerm] = useState("");
-  
-  const filteredCustomers = mockCustomers.filter(customer => {
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [formData, setFormData] = useState({ name: "", phone: "" });
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch customers
+  const { data: customers = [], isLoading } = useQuery({
+    queryKey: ['customers'],
+    queryFn: () => customersAPI.getAll().then(res => res.data)
+  });
+
+  // Add customer mutation
+  const addCustomerMutation = useMutation({
+    mutationFn: (data: { name: string; phone: string }) => customersAPI.create(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      setShowAddDialog(false);
+      setFormData({ name: "", phone: "" });
+      toast({
+        title: "Success",
+        description: "Customer added successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to add customer",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Delete customer mutation
+  const deleteCustomerMutation = useMutation({
+    mutationFn: (id: number) => customersAPI.delete(id.toString()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast({
+        title: "Success",
+        description: "Customer deleted successfully",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to delete customer",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const filteredCustomers = customers.filter((customer: Customer) => {
     const matchesSearch = customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          customer.phone.includes(searchTerm);
     return matchesSearch;
@@ -86,10 +120,36 @@ export default function CustomersList() {
     return "text-muted-foreground";
   };
 
-  const totalCustomers = mockCustomers.length;
-  const vipCustomers = mockCustomers.filter(c => c.status === "VIP").length;
-  const totalDebt = mockCustomers.reduce((sum, c) => sum + Math.abs(Math.min(c.accountBalance, 0)), 0);
-  const totalCredit = mockCustomers.reduce((sum, c) => sum + Math.max(c.accountBalance, 0), 0);
+  const handleAddCustomer = () => {
+    if (!formData.name || !formData.phone) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive",
+      });
+      return;
+    }
+    addCustomerMutation.mutate(formData);
+  };
+
+  const handleDeleteCustomer = (id: number) => {
+    deleteCustomerMutation.mutate(id);
+  };
+
+  const totalCustomers = customers.length;
+  const vipCustomers = 0; // Will need to be calculated based on purchase history
+  const totalDebt = 0; // Will need to fetch from customer accounts
+  const totalCredit = 0; // Will need to fetch from customer accounts
+
+  if (isLoading) {
+    return (
+      <Layout title="Customer Management" showSearch={false}>
+        <div className="flex items-center justify-center h-64">
+          <LoadingSpinner size="lg" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout title="Customer Management" showSearch={false}>
@@ -157,7 +217,12 @@ export default function CustomersList() {
             />
           </div>
           
-          <Button variant="hero" size="lg" className="w-full md:w-auto">
+          <Button 
+            variant="hero" 
+            size="lg" 
+            className="w-full md:w-auto"
+            onClick={() => setShowAddDialog(true)}
+          >
             <Plus className="h-5 w-5 mr-2" />
             Add Customer
           </Button>
@@ -165,7 +230,7 @@ export default function CustomersList() {
 
         {/* Customers List */}
         <div className="space-y-4">
-          {filteredCustomers.map((customer) => (
+          {filteredCustomers.map((customer: Customer) => (
             <Card key={customer.id} className="hover:shadow-primary transition-smooth">
               <CardContent className="p-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between space-y-4 md:space-y-0">
@@ -177,8 +242,8 @@ export default function CustomersList() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center space-x-2 mb-1">
                         <h3 className="font-semibold text-lg">{customer.name}</h3>
-                        <Badge className={cn("text-xs", getStatusColor(customer.status))}>
-                          {customer.status}
+                        <Badge className={cn("text-xs", getStatusColor("Active"))}>
+                          Active
                         </Badge>
                       </div>
                       <div className="flex items-center space-x-1 text-muted-foreground mb-2">
@@ -186,9 +251,7 @@ export default function CustomersList() {
                         <span>{customer.phone}</span>
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        <span>Total purchases: ₦{customer.totalPurchases.toLocaleString()}</span>
-                        <span className="mx-2">•</span>
-                        <span>Last purchase: {customer.lastPurchase}</span>
+                        <span>Joined: {new Date(customer.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
                   </div>
@@ -196,13 +259,8 @@ export default function CustomersList() {
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
                       <p className="text-sm text-muted-foreground mb-1">Account Balance</p>
-                      <p className={cn("text-xl font-bold", getBalanceColor(customer.accountBalance))}>
-                        {customer.accountBalance === 0 
-                          ? "₦0" 
-                          : customer.accountBalance > 0 
-                            ? `+₦${customer.accountBalance.toLocaleString()}`
-                            : `-₦${Math.abs(customer.accountBalance).toLocaleString()}`
-                        }
+                      <p className={cn("text-xl font-bold", getBalanceColor(0))}>
+                        ₦0
                       </p>
                     </div>
                     
@@ -226,7 +284,10 @@ export default function CustomersList() {
                           Account History
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem 
+                          className="text-destructive"
+                          onClick={() => handleDeleteCustomer(customer.id)}
+                        >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete Customer
                         </DropdownMenuItem>
@@ -247,10 +308,58 @@ export default function CustomersList() {
               <p className="text-muted-foreground mb-4">
                 Try adjusting your search criteria
               </p>
-              <Button variant="outline">Clear Search</Button>
+              <Button variant="outline" onClick={() => setSearchTerm("")}>
+                Clear Search
+              </Button>
             </div>
           </Card>
         )}
+
+        {/* Add Customer Dialog */}
+        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Add New Customer</DialogTitle>
+              <DialogDescription>
+                Add a new customer to your database. All fields are required.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Customer Name</Label>
+                <Input
+                  id="name"
+                  placeholder="Enter customer name"
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone Number</Label>
+                <Input
+                  id="phone"
+                  placeholder="Enter phone number"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setShowAddDialog(false);
+                setFormData({ name: "", phone: "" });
+              }}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleAddCustomer}
+                disabled={addCustomerMutation.isPending}
+              >
+                {addCustomerMutation.isPending ? "Adding..." : "Add Customer"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );

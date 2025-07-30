@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: 'https://improved-space-happiness-xjgxj7rwxwx3p4rj-3000.app.github.dev/',
+  baseURL: ' http://localhost:3000/',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -58,24 +58,43 @@ export const inventoryAPI = {
 
 // Customers API
 export const customersAPI = {
-  getAll: () => api.get('/customers'),
-  getById: (id: string) => api.get(`/customers/${id}`),
-  create: (data: { name: string; phone: string }) => api.post('/customers', data),
-  update: (id: string, data: any) => api.put(`/customers/${id}`, data),
-  delete: (id: string) => api.delete(`/customers/${id}`),
-  getAccount: (id: string) => api.get(`/customers/${id}/account`),
-  getTransactions: (id: string) => api.get(`/customers/${id}/transactions`),
-  addTransaction: (id: string, data: any) => api.post(`/customers/${id}/transactions`, data),
+  getAll: () => api.get('/sales/customers'),
+  getById: (id: string) => api.get(`/sales/customers/${id}`),
+  create: (data: { name: string; phone: string }) => api.post('/sales/customers', data),
+  update: (id: string, data: any) => api.put(`/sales/customers/${id}`, data),
+  delete: (id: string) => api.delete(`/sales/customers/${id}`),
+  getAccount: (id: string) => api.get(`/sales/customers/${id}/account`),
+  getTransactions: (id: string) => api.get(`/sales/customers/${id}/transactions`),
+  addTransaction: (id: string, data: any) => api.post(`/sales/customers/${id}/transactions`, data),
+  addPayment: (id: string, data: { amount: number; paymentType: string }) =>
+  api.post(`/sales/customers/${id}/payments`, data),
+
+};
+// 📦 Sales API
+export const salesAPI = {
+  // List all sales (optionally with date filters)
+  getAll: (params?: any) => api.get('/sales/sales', { params }),
+
+  // Get a single sale by ID
+  getById: (id: string) => api.get(`/sales/${id}`),
+
+  // Create a new sale
+  create: (data: any) => api.post('/sales/sales', data),
+
+  // Delete a sale (⚠️ NOT IMPLEMENTED in backend yet)
+  delete: (id: string) => api.delete(`/sales/${id}`), // <- Optional
+
+  // Get receipt (JSON or PDF)
+  getReceipt: (id: string, format = 'json') =>
+    api.get(`/sales/${id}/receipt`, { params: { format } }),
+
+  // Filter sales by customer/date range
+  filter: (params: any) => api.get('/sales/filter', { params }),
+
+  // Daily/weekly report
+  report: (range: 'daily' | 'weekly') => api.get('/sales/report', { params: { range } }),
 };
 
-// Sales API
-export const salesAPI = {
-  getAll: (params?: any) => api.get('/sales', { params }),
-  getById: (id: string) => api.get(`/sales/${id}`),
-  create: (data: any) => api.post('/sales', data),
-  delete: (id: string) => api.delete(`/sales/${id}`),
-  getReceipt: (id: string) => api.get(`/sales/${id}/receipt`),
-};
 
 // Reports API
 export const reportsAPI = {

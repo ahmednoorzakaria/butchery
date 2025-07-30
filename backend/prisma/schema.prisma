@@ -92,5 +92,7 @@ model CustomerTransaction {
 
 enum PaymentType {
   CASH
-  CREDIT
+  MPESA
+  CARD
+  TRANSFER
 }

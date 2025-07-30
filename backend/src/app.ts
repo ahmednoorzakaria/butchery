@@ -15,7 +15,7 @@ app.use(logger('dev'));
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
-const allowedOrigin = 'https://improved-space-happiness-xjgxj7rwxwx3p4rj-8080.app.github.dev';
+const allowedOrigin = 'http://localhost:8080';
 
 app.use(cors({
   origin: allowedOrigin,
