@@ -1,0 +1,96 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+ // output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id Int @id @default(autoincrement())
+  email String @unique
+  name String @unique
+  phone  String @unique
+  password String
+  createdAt DateTime @default(now())
+}
+
+model InventoryItem {
+  id             Int                     @id @default(autoincrement())
+  name           String
+  category       String                  // e.g. meat, spice, egg
+  subtype        String?                 // e.g. leg, boneless
+  quantity       Int
+  unit           String                  // e.g. kg, pcs
+  price          Float
+  lowStockLimit  Int                     @default(10)
+  transactions   InventoryTransaction[]
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  saleItems   SaleItem[]
+}
+
+model InventoryTransaction {
+  id             Int          @id @default(autoincrement())
+  itemId         Int
+  type           TransactionType
+  quantity       Int
+  createdAt      DateTime     @default(now())
+  inventoryItem  InventoryItem @relation(fields: [itemId], references: [id])
+}
+
+enum TransactionType {
+  STOCK_IN
+  STOCK_OUT
+}
+
+
+model Customer {
+  id           Int                @id @default(autoincrement())
+  name         String
+  phone        String             @unique
+  sales        Sale[]
+  transactions CustomerTransaction[]
+  createdAt    DateTime           @default(now())
+}
+
+model Sale {
+  id           Int        @id @default(autoincrement())
+  customer     Customer   @relation(fields: [customerId], references: [id])
+  customerId   Int
+  totalAmount  Float
+  discount     Float      @default(0)
+  paidAmount   Float
+  paymentType  PaymentType
+  items        SaleItem[]
+  createdAt    DateTime   @default(now())
+}
+
+model SaleItem {
+  id        Int      @id @default(autoincrement())
+  sale      Sale     @relation(fields: [saleId], references: [id])
+  saleId    Int
+  item      InventoryItem @relation(fields: [itemId], references: [id])
+  itemId    Int
+  quantity  Float
+  price     Float
+}
+
+model CustomerTransaction {
+  id         Int       @id @default(autoincrement())
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  customerId Int
+  amount     Float     // Positive for credit, negative for debit
+  reason     String
+  createdAt  DateTime  @default(now())
+}
+
+enum PaymentType {
+  CASH
+  CREDIT
+}
