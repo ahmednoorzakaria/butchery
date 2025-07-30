@@ -9,6 +9,10 @@ import InventoryList from "./pages/InventoryList";
 import SalesList from "./pages/SalesList";
 import CustomersList from "./pages/CustomersList";
 import NotFound from "./pages/NotFound";
+import Login from "./pages/Login";
+import ProtectedRoute from "./components/ProtectedRoute";
+
+
 
 const queryClient = new QueryClient();
 
@@ -19,17 +23,48 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/inventory" element={<InventoryList />} />
-          <Route path="/sales" element={<SalesList />} />
-          <Route path="/customers" element={<CustomersList />} />
-          <Route path="/reports" element={<Dashboard />} />
-          <Route path="/account" element={<Dashboard />} />
-          <Route path="/settings" element={<Dashboard />} />
-          <Route path="/purchases" element={<Dashboard />} />
-          <Route path="/help" element={<Dashboard />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Index />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/inventory"
+            element={
+              <ProtectedRoute>
+                <InventoryList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sales"
+            element={
+              <ProtectedRoute>
+                <SalesList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/customers"
+            element={
+              <ProtectedRoute>
+                <CustomersList />
+              </ProtectedRoute>
+            }
+          />
+          {/* Add other protected routes here */}
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

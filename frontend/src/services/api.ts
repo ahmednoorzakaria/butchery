@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: process.env.VITE_API_BASE_URL || 'http://localhost:3000/api',
+  baseURL: 'https://improved-space-happiness-xjgxj7rwxwx3p4rj-3000.app.github.dev/',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
