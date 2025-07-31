@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: ' http://localhost:3000/',
+  baseURL: ' http://localhost:3000',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -95,12 +95,18 @@ export const salesAPI = {
   report: (range: 'daily' | 'weekly') => api.get('/sales/report', { params: { range } }),
 };
 
-
 // Reports API
 export const reportsAPI = {
-  getDailySales: () => api.get('/reports/sales/daily'),
-  getWeeklySales: () => api.get('/reports/sales/weekly'),
-  getCustomerSales: (customerId: string) => api.get(`/reports/sales/customer/${customerId}`),
+  // Existing reports
+  getDailySales: () => api.get('/sales/reports/daily'),
+  getWeeklySales: () => api.get('/sales/reports/weekly'),
+  getCustomerSales: (customerId: string) => api.get(`/sales/reports/customer/${customerId}`),
+
+  // New reports
+  getOutstandingBalances: () => api.get('/sales/reports/outstanding-balances'),
+  getTopProducts: (start?: string, end?: string) =>
+    api.get('/sales/reports/top-products', { params: { start, end } }),
+  getInventoryUsage: () => api.get('/sales/reports/inventory-usage'),
 };
 
 export default api;

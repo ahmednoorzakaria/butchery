@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Phone, User, MoreVertical, Edit, Trash2, CreditCard } from "lucide-react";
+import { Plus, Search, Phone, User, MoreVertical, CreditCard, Receipt, DollarSign } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,9 +20,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { customersAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
@@ -36,21 +42,28 @@ interface Customer {
   updatedAt: string;
 }
 
+interface CustomerTransaction {
+  id: number;
+  amount: number;
+  reason: string;
+  createdAt: string;
+}
+
 interface CustomerAccount {
   balance: number;
   status: string;
-  transactions: Array<{
-    id: number;
-    amount: number;
-    reason: string;
-    createdAt: string;
-  }>;
+  transactions: CustomerTransaction[];
 }
 
-export default function CustomersList() {
+export default function CustomerManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showProfileDialog, setShowProfileDialog] = useState(false);
+  const [showAccountDialog, setShowAccountDialog] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [formData, setFormData] = useState({ name: "", phone: "" });
+  const [paymentData, setPaymentData] = useState({ amount: "", paymentType: "Cash" });
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -58,6 +71,13 @@ export default function CustomersList() {
   const { data: customers = [], isLoading } = useQuery({
     queryKey: ['customers'],
     queryFn: () => customersAPI.getAll().then(res => res.data)
+  });
+
+  // Fetch customer account data
+  const { data: customerAccount, isLoading: isLoadingAccount } = useQuery({
+    queryKey: ['customerAccount', selectedCustomer?.id],
+    queryFn: () => selectedCustomer ? customersAPI.getTransactions(selectedCustomer.id.toString()).then(res => res.data) : null,
+    enabled: !!selectedCustomer && (showAccountDialog || showPaymentDialog)
   });
 
   // Add customer mutation
@@ -72,29 +92,32 @@ export default function CustomersList() {
         description: "Customer added successfully",
       });
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "Failed to add customer",
+        description: error.response?.data?.error || "Failed to add customer",
         variant: "destructive",
       });
     }
   });
 
-  // Delete customer mutation
-  const deleteCustomerMutation = useMutation({
-    mutationFn: (id: number) => customersAPI.delete(id.toString()),
+  // Add payment mutation
+  const addPaymentMutation = useMutation({
+    mutationFn: (data: { customerId: string; amount: number; paymentType: string }) => 
+      customersAPI.addPayment(data.customerId, { amount: data.amount, paymentType: data.paymentType }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['customerAccount', selectedCustomer?.id] });
+      setShowPaymentDialog(false);
+      setPaymentData({ amount: "", paymentType: "Cash" });
       toast({
         title: "Success",
-        description: "Customer deleted successfully",
+        description: "Payment recorded successfully",
       });
     },
-    onError: () => {
+    onError: (error: any) => {
       toast({
         title: "Error",
-        description: "Failed to delete customer",
+        description: error.response?.data?.error || "Failed to record payment",
         variant: "destructive",
       });
     }
@@ -108,8 +131,9 @@ export default function CustomersList() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "VIP": return "bg-primary/10 text-primary";
-      case "Active": return "bg-success/10 text-success";
+      case "Credit": return "bg-success/10 text-success";
+      case "Due": return "bg-destructive/10 text-destructive";
+      case "Settled": return "bg-muted text-muted-foreground";
       default: return "bg-muted text-muted-foreground";
     }
   };
@@ -132,14 +156,40 @@ export default function CustomersList() {
     addCustomerMutation.mutate(formData);
   };
 
-  const handleDeleteCustomer = (id: number) => {
-    deleteCustomerMutation.mutate(id);
+  const handleViewProfile = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setShowProfileDialog(true);
+  };
+
+  const handleViewAccount = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setShowAccountDialog(true);
+  };
+
+  const handleMakePayment = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setShowPaymentDialog(true);
+  };
+
+  const handlePayment = () => {
+    if (!selectedCustomer || !paymentData.amount) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid amount",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    addPaymentMutation.mutate({
+      customerId: selectedCustomer.id.toString(),
+      amount: parseFloat(paymentData.amount),
+      paymentType: paymentData.paymentType
+    });
   };
 
   const totalCustomers = customers.length;
-  const vipCustomers = 0; // Will need to be calculated based on purchase history
-  const totalDebt = 0; // Will need to fetch from customer accounts
-  const totalCredit = 0; // Will need to fetch from customer accounts
+  const activeCustomers = customers.length; // All customers are considered active for now
 
   if (isLoading) {
     return (
@@ -155,7 +205,7 @@ export default function CustomersList() {
     <Layout title="Customer Management" showSearch={false}>
       <div className="space-y-6">
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center space-x-2">
@@ -171,10 +221,10 @@ export default function CustomersList() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center space-x-2">
-                <User className="h-5 w-5 text-primary" />
+                <User className="h-5 w-5 text-success" />
                 <div>
-                  <p className="text-sm text-muted-foreground">VIP Customers</p>
-                  <p className="text-2xl font-bold">{vipCustomers}</p>
+                  <p className="text-sm text-muted-foreground">Active Customers</p>
+                  <p className="text-2xl font-bold">{activeCustomers}</p>
                 </div>
               </div>
             </CardContent>
@@ -183,22 +233,10 @@ export default function CustomersList() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center space-x-2">
-                <CreditCard className="h-5 w-5 text-destructive" />
+                <Receipt className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Debt</p>
-                  <p className="text-2xl font-bold text-destructive">₦{totalDebt.toLocaleString()}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center space-x-2">
-                <CreditCard className="h-5 w-5 text-success" />
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Credit</p>
-                  <p className="text-2xl font-bold text-success">₦{totalCredit.toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground">This Month</p>
+                  <p className="text-2xl font-bold">{new Date().toLocaleDateString('en-US', { month: 'short' })}</p>
                 </div>
               </div>
             </CardContent>
@@ -258,10 +296,8 @@ export default function CustomersList() {
                   
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
-                      <p className="text-sm text-muted-foreground mb-1">Account Balance</p>
-                      <p className={cn("text-xl font-bold", getBalanceColor(0))}>
-                        ₦0
-                      </p>
+                      <p className="text-sm text-muted-foreground mb-1">Customer ID</p>
+                      <p className="text-lg font-semibold">#{customer.id}</p>
                     </div>
                     
                     <DropdownMenu>
@@ -271,25 +307,17 @@ export default function CustomersList() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="bg-popover">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleViewProfile(customer)}>
                           <User className="h-4 w-4 mr-2" />
                           View Profile
                         </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit Customer
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <CreditCard className="h-4 w-4 mr-2" />
+                        <DropdownMenuItem onClick={() => handleViewAccount(customer)}>
+                          <Receipt className="h-4 w-4 mr-2" />
                           Account History
                         </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
-                          className="text-destructive"
-                          onClick={() => handleDeleteCustomer(customer.id)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Customer
+                        <DropdownMenuItem onClick={() => handleMakePayment(customer)}>
+                          <DollarSign className="h-4 w-4 mr-2" />
+                          Make Payment
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -356,6 +384,210 @@ export default function CustomersList() {
                 disabled={addCustomerMutation.isPending}
               >
                 {addCustomerMutation.isPending ? "Adding..." : "Add Customer"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Customer Profile Dialog */}
+        <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Customer Profile</DialogTitle>
+              <DialogDescription>
+                Customer information and details
+              </DialogDescription>
+            </DialogHeader>
+            {selectedCustomer && (
+              <div className="space-y-4 py-4">
+                <div className="flex items-center space-x-4">
+                  <div className="h-16 w-16 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <User className="h-8 w-8 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold">{selectedCustomer.name}</h3>
+                    <p className="text-muted-foreground flex items-center">
+                      <Phone className="h-4 w-4 mr-1" />
+                      {selectedCustomer.phone}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium">Customer ID</Label>
+                    <p className="text-lg">#{selectedCustomer.id}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Status</Label>
+                    <Badge className="mt-1">Active</Badge>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Joined Date</Label>
+                    <p>{new Date(selectedCustomer.createdAt).toLocaleDateString()}</p>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium">Last Updated</Label>
+                    <p>{new Date(selectedCustomer.updatedAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowProfileDialog(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Account History Dialog */}
+        <Dialog open={showAccountDialog} onOpenChange={setShowAccountDialog}>
+          <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-hidden">
+            <DialogHeader>
+              <DialogTitle>Account History</DialogTitle>
+              <DialogDescription>
+                Transaction history and account balance for {selectedCustomer?.name}
+              </DialogDescription>
+            </DialogHeader>
+            
+            {isLoadingAccount ? (
+              <div className="flex justify-center py-8">
+                <LoadingSpinner size="lg" />
+              </div>
+            ) : customerAccount ? (
+              <div className="space-y-4">
+                {/* Account Summary */}
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Account Balance</p>
+                        <p className={cn("text-2xl font-bold", getBalanceColor(customerAccount.balance))}>
+                          KSH {Math.abs(customerAccount.balance).toLocaleString()}
+                        </p>
+                      </div>
+                      <Badge className={getStatusColor(customerAccount.status)}>
+                        {customerAccount.status}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Transaction History */}
+                <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                  <h4 className="font-medium">Transaction History</h4>
+                  {customerAccount.transactions.length > 0 ? (
+                    customerAccount.transactions.map((transaction) => (
+                      <Card key={transaction.id}>
+                        <CardContent className="p-3">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <p className="font-medium">{transaction.reason}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {new Date(transaction.createdAt).toLocaleString()}
+                              </p>
+                            </div>
+                            <p className={cn("font-semibold", getBalanceColor(transaction.amount))}>
+                              {transaction.amount > 0 ? '+' : ''}KSH {Math.abs(transaction.amount).toLocaleString()}
+                            </p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))
+                  ) : (
+                    <p className="text-muted-foreground text-center py-4">No transactions found</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-center py-4">No account data available</p>
+            )}
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowAccountDialog(false)}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Make Payment Dialog */}
+        <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Record Payment</DialogTitle>
+              <DialogDescription>
+                Record a payment for {selectedCustomer?.name}
+              </DialogDescription>
+            </DialogHeader>
+            
+            {isLoadingAccount ? (
+              <div className="flex justify-center py-8">
+                <LoadingSpinner size="lg" />
+              </div>
+            ) : customerAccount && (
+              <div className="space-y-4 py-4">
+                {/* Current Balance */}
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-center">
+                      <p className="text-sm text-muted-foreground">Current Balance</p>
+                      <p className={cn("text-xl font-bold", getBalanceColor(customerAccount.balance))}>
+                        KSH {Math.abs(customerAccount.balance).toLocaleString()}
+                      </p>
+                      <Badge className={getStatusColor(customerAccount.status)}>
+                        {customerAccount.status}
+                      </Badge>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Payment Form */}
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Payment Amount</Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      placeholder="Enter amount"
+                      value={paymentData.amount}
+                      onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="paymentType">Payment Method</Label>
+                    <Select 
+                      value={paymentData.paymentType} 
+                      onValueChange={(value) => setPaymentData({ ...paymentData, paymentType: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Cash">Cash</SelectItem>
+                        <SelectItem value="Transfer">Bank Transfer</SelectItem>
+                        <SelectItem value="Card">Card Payment</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setShowPaymentDialog(false);
+                setPaymentData({ amount: "", paymentType: "Cash" });
+              }}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handlePayment}
+                disabled={addPaymentMutation.isPending || !paymentData.amount}
+              >
+                {addPaymentMutation.isPending ? "Recording..." : "Record Payment"}
               </Button>
             </DialogFooter>
           </DialogContent>

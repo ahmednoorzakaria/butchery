@@ -48,7 +48,7 @@ router.post("/sales", authenticateToken, async (req, res) => {
   const sale = await prisma.sale.create({
     data: {
       customerId,
-      totalAmount,
+      totalAmount : netAmount,
       discount,
       paidAmount,
       paymentType,
@@ -91,16 +91,67 @@ router.post("/customers/:id/payments", authenticateToken, async (req, res) => {
     return res.status(400).json({ error: "Valid amount is required" });
   }
 
-  await prisma.customerTransaction.create({
-    data: {
-      customerId,
-      amount: amount, // Positive to reduce debt
-      reason: `Payment via ${paymentType}`,
-    },
-  });
+  try {
+    // Get all sales for the customer, ordered oldest first
+    const allSales = await prisma.sale.findMany({
+      where: { customerId },
+      orderBy: { createdAt: "asc" },
+    });
 
-  res.status(201).json({ message: "Payment recorded successfully" });
+    // Filter sales that are not fully paid
+    const unpaidSales = allSales.filter(sale => sale.totalAmount > sale.paidAmount);
+
+    let remainingPayment = amount;
+
+    for (const sale of unpaidSales) {
+      const saleDue = sale.totalAmount - sale.paidAmount;
+      if (saleDue <= 0) continue;
+
+      const paymentToApply = Math.min(saleDue, remainingPayment);
+
+      // Update the sale with the partial or full payment
+      await prisma.sale.update({
+        where: { id: sale.id },
+        data: {
+          paidAmount: {
+            increment: paymentToApply,
+          },
+        },
+      });
+
+      // Record a transaction for this payment
+      await prisma.customerTransaction.create({
+        data: {
+          customerId,
+          amount: paymentToApply,
+          reason: `Payment of ${paymentToApply} applied to Sale #${sale.id} via ${paymentType}`,
+        },
+      });
+
+      remainingPayment -= paymentToApply;
+      if (remainingPayment <= 0) break;
+    }
+
+    // If there's leftover payment, treat it as advance/credit
+    if (remainingPayment > 0) {
+      await prisma.customerTransaction.create({
+        data: {
+          customerId,
+          amount: remainingPayment,
+          reason: `Advance payment via ${paymentType}`,
+        },
+      });
+    }
+
+    return res.status(201).json({ message: "Payment recorded and applied to outstanding sales" });
+
+  } catch (error) {
+    console.error("Error recording payment:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 });
+
+
 
 // View customer balance and transactions
 router.get("/customers/:id/transactions", authenticateToken, async (req, res) => {
@@ -201,6 +252,110 @@ router.get("/sales/report", authenticateToken, async (req, res) => {
   const totalDiscount = sales.reduce((sum, sale) => sum + sale.discount, 0);
 
   res.json({ totalSales, totalPaid, totalDiscount, numberOfSales: sales.length });
+});
+
+//Returns a list of customers with a negative balance (i.e. customers who owe money).
+
+router.get("/reports/outstanding-balances", authenticateToken, async (req, res) => {
+  try {
+    const customers = await prisma.customer.findMany({
+      include: {
+        transactions: true,
+      },
+    });
+
+    const balances = customers.map((customer) => {
+      const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      return {
+        customerId: customer.id,
+        name: customer.name,
+        balance,
+      };
+    });
+
+    const withNegativeBalance = balances.filter(c => c.balance < 0);
+
+    res.json(withNegativeBalance);
+  } catch (error) {
+    console.error("Error fetching outstanding balances:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+//✅ 2. GET /reports/top-products?start=...&end=...
+
+
+router.get("/reports/top-products", authenticateToken, async (req, res) => {
+  const { start, end } = req.query;
+
+  const startDate = start ? new Date(start as string) : subDays(new Date(), 7);
+  const endDate = end ? new Date(end as string) : new Date();
+
+  try {
+    const items = await prisma.saleItem.groupBy({
+      by: ['itemId'],
+      where: {
+        sale: {
+          createdAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+      },
+      _sum: {
+        quantity: true,
+      },
+      orderBy: {
+        _sum: {
+          quantity: 'desc',
+        },
+      },
+      take: 10, // return top 10
+    });
+
+    const withNames = await Promise.all(items.map(async item => {
+      const itemInfo = await prisma.inventoryItem.findUnique({ where: { id: item.itemId } });
+      return {
+        itemId: item.itemId,
+        name: itemInfo?.name,
+        quantitySold: item._sum.quantity,
+      };
+    }));
+
+    res.json(withNames);
+  } catch (error) {
+    console.error("Error fetching top products:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+
+//✅ 3. GET /reports/inventory-usage
+
+router.get("/reports/inventory-usage", authenticateToken, async (req, res) => {
+  try {
+    const usage = await prisma.saleItem.groupBy({
+      by: ['itemId'],
+      _sum: {
+        quantity: true,
+      },
+    });
+
+    const result = await Promise.all(usage.map(async (entry) => {
+      const item = await prisma.inventoryItem.findUnique({ where: { id: entry.itemId } });
+      return {
+        itemId: entry.itemId,
+        name: item?.name,
+        totalUsed: entry._sum.quantity,
+        currentStock: item?.quantity,
+      };
+    }));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Error fetching inventory usage:", error);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 export default router;

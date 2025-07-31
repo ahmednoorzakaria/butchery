@@ -12,11 +12,7 @@ const primaryItems = [
   { name: "Account", href: "/account", icon: User },
 ];
 
-const secondaryItems = [
-  { name: "Settings", href: "/settings", icon: Settings },
-  { name: "Purchases", href: "/purchases", icon: ShoppingBag },
-  { name: "Help", href: "/help", icon: HelpCircle },
-];
+
 
 interface SidebarProps {
   className?: string;
@@ -84,32 +80,7 @@ export function Sidebar({ className }: SidebarProps) {
         </div>
 
         {/* Secondary Navigation */}
-        <div className="space-y-1">
-          {!isCollapsed && (
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
-              More
-            </p>
-          )}
-          {secondaryItems.map((item) => {
-            const isActive = location.pathname.startsWith(item.href);
-            return (
-              <NavLink
-                key={item.name}
-                to={item.href}
-                className={cn(
-                  "flex items-center rounded-lg px-3 py-2 transition-smooth",
-                  isActive 
-                    ? "bg-primary text-primary-foreground shadow-soft" 
-                    : "text-muted-foreground hover:text-foreground hover:bg-accent",
-                  isCollapsed && "justify-center"
-                )}
-              >
-                <item.icon className={cn("h-5 w-5", !isCollapsed && "mr-3")} />
-                {!isCollapsed && <span className="font-medium">{item.name}</span>}
-              </NavLink>
-            );
-          })}
-        </div>
+        
       </div>
     </aside>
   );

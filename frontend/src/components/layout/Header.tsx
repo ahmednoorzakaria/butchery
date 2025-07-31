@@ -37,15 +37,7 @@ export function Header({ title, className, showSearch = false }: HeaderProps) {
 
         {/* Right side - Actions */}
         <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-5 w-5" />
-            {/* Notification badge */}
-            <span className="absolute -top-1 -right-1 h-3 w-3 bg-primary rounded-full border-2 border-background"></span>
-          </Button>
           
-          <Button variant="ghost" size="icon">
-            <User className="h-5 w-5" />
-          </Button>
         </div>
       </div>
     </header>
