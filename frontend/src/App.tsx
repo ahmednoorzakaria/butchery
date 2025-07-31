@@ -12,7 +12,7 @@ import CustomersList from "./pages/CustomersList";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute";
-
+import Account from "./pages/Account";
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -44,6 +44,14 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <InventoryList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/account"
+            element={
+              <ProtectedRoute>
+                <Account />
               </ProtectedRoute>
             }
           />

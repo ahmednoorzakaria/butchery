@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: ' http://localhost:3000',
+  baseURL: 'http://localhost:3001',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
@@ -35,7 +35,6 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
 // Authentication API
 export const authAPI = {
   login: (credentials: { email: string; password: string }) =>
@@ -44,7 +43,13 @@ export const authAPI = {
   register: (userData: { name: string; email: string; password: string }) =>
     api.post('/auth/register', userData),
   
-  getProfile: () => api.get('/auth/me'),
+  getProfile: () => api.get('/profile'),
+
+  logout: () => {
+    // Clear localStorage, cookies, or anything used for auth
+    localStorage.removeItem('auth_token'); // If using token storage
+    // Optionally, call a logout endpoint if backend supports it
+  },
 };
 
 // Inventory API
@@ -63,49 +68,25 @@ export const customersAPI = {
   create: (data: { name: string; phone: string }) => api.post('/sales/customers', data),
   update: (id: string, data: any) => api.put(`/sales/customers/${id}`, data),
   delete: (id: string) => api.delete(`/sales/customers/${id}`),
-  getAccount: (id: string) => api.get(`/sales/customers/${id}/account`),
   getTransactions: (id: string) => api.get(`/sales/customers/${id}/transactions`),
-  addTransaction: (id: string, data: any) => api.post(`/sales/customers/${id}/transactions`, data),
-  addPayment: (id: string, data: { amount: number; paymentType: string }) =>
-  api.post(`/sales/customers/${id}/payments`, data),
-
+  addPayment: (id: string, data: { amount: number; paymentType: string }) => api.post(`/sales/customers/${id}/payments`, data),
 };
-// 📦 Sales API
+
+// Sales API
 export const salesAPI = {
-  // List all sales (optionally with date filters)
   getAll: (params?: any) => api.get('/sales/sales', { params }),
-
-  // Get a single sale by ID
   getById: (id: string) => api.get(`/sales/${id}`),
-
-  // Create a new sale
   create: (data: any) => api.post('/sales/sales', data),
-
-  // Delete a sale (⚠️ NOT IMPLEMENTED in backend yet)
-  delete: (id: string) => api.delete(`/sales/${id}`), // <- Optional
-
-  // Get receipt (JSON or PDF)
-  getReceipt: (id: string, format = 'json') =>
-    api.get(`/sales/${id}/receipt`, { params: { format } }),
-
-  // Filter sales by customer/date range
+  delete: (id: string) => api.delete(`/sales/${id}`),
+  getReceipt: (id: string, format = 'json') => api.get(`/sales/${id}/receipt`, { params: { format } }),
   filter: (params: any) => api.get('/sales/filter', { params }),
-
-  // Daily/weekly report
-  report: (range: 'daily' | 'weekly') => api.get('/sales/report', { params: { range } }),
+  report: (range: 'daily' | 'weekly') => api.get('/sales/sales/report', { params: { range } }),
 };
 
 // Reports API
 export const reportsAPI = {
-  // Existing reports
-  getDailySales: () => api.get('/sales/reports/daily'),
-  getWeeklySales: () => api.get('/sales/reports/weekly'),
-  getCustomerSales: (customerId: string) => api.get(`/sales/reports/customer/${customerId}`),
-
-  // New reports
   getOutstandingBalances: () => api.get('/sales/reports/outstanding-balances'),
-  getTopProducts: (start?: string, end?: string) =>
-    api.get('/sales/reports/top-products', { params: { start, end } }),
+  getTopProducts: (start?: string, end?: string) => api.get('/sales/reports/top-products', { params: { start, end } }),
   getInventoryUsage: () => api.get('/sales/reports/inventory-usage'),
 };
 

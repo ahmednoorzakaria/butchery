@@ -243,17 +243,57 @@ router.get("/sales/report", authenticateToken, async (req, res) => {
   const start = range === "weekly" ? startOfWeek(now) : startOfDay(now);
   const end = range === "weekly" ? endOfWeek(now) : endOfDay(now);
 
+  // Fetch sales within range
   const sales = await prisma.sale.findMany({
-    where: { createdAt: { gte: start, lte: end } },
+    where: {
+      createdAt: {
+        gte: start,
+        lte: end,
+      },
+    },
+    include: {
+      items: {
+        include: {
+          item: true, // fetch item details
+        },
+      },
+    },
   });
 
   const totalSales = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
   const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
   const totalDiscount = sales.reduce((sum, sale) => sum + sale.discount, 0);
 
-  res.json({ totalSales, totalPaid, totalDiscount, numberOfSales: sales.length });
-});
+  const itemSalesCount: Record<string, { name: string; quantity: number }> = {};
 
+  for (const sale of sales) {
+    for (const saleItem of sale.items) {
+      const id = saleItem.itemId;
+      const name = saleItem.item.name;
+      if (!itemSalesCount[id]) {
+        itemSalesCount[id] = { name, quantity: 0 };
+      }
+      itemSalesCount[id].quantity += saleItem.quantity;
+    }
+  }
+
+  const sortedItems = Object.entries(itemSalesCount)
+    .sort((a, b) => b[1].quantity - a[1].quantity)
+    .map(([id, data]) => ({ id, ...data }));
+
+  const mostSoldItem = sortedItems[0] || null;
+  const leastSoldItem = sortedItems[sortedItems.length - 1] || null;
+
+  return res.json({
+    range,
+    totalSales,
+    totalPaid,
+    totalDiscount,
+    numberOfSales: sales.length,
+    mostSoldItem,
+    leastSoldItem,
+  });
+});
 //Returns a list of customers with a negative balance (i.e. customers who owe money).
 
 router.get("/reports/outstanding-balances", authenticateToken, async (req, res) => {
