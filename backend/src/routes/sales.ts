@@ -24,9 +24,17 @@ router.get("/customers", authenticateToken, async (req, res) => {
   res.json(customers);
 });
 
+
+
+
+
 // Perform a sale
-router.post("/sales", authenticateToken, async (req, res) => {
+router.post("/sales", authenticateToken, async (req,res) => {
   const { customerId, items, discount = 0, paidAmount, paymentType } = req.body;
+  const userId = (req as any).userId;
+  if (!userId) return res.status(401).json({ error: "User not authenticated" });
+  //console.log("User ID from token:", userId);
+
 
   if (!items || items.length === 0)
     return res.status(400).json({ error: "Items are required" });
@@ -48,11 +56,16 @@ router.post("/sales", authenticateToken, async (req, res) => {
   const sale = await prisma.sale.create({
     data: {
       customerId,
+      userId,
       totalAmount : netAmount,
       discount,
       paidAmount,
       paymentType,
       items: { create: saleItemsData },
+    },
+     include: {
+      customer: true,
+      user: true,
     },
   });
 
@@ -173,6 +186,7 @@ router.get("/sales/:id/receipt", authenticateToken, async (req, res) => {
     where: { id: saleId },
     include: {
       customer: true,
+      user: true,
       items: { include: { item: true } },
     },
   });

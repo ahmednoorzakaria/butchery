@@ -3,7 +3,7 @@
 import app from '../app';
 import http from 'http';
 
-const port = process.env.PORT || 3001;
+const port = process.env.PORT || 3005;
 const server = http.createServer(app);
 
 server.listen(port, () => {

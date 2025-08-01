@@ -212,8 +212,11 @@ export default function SalesManagement() {
     const netTotal = calculateNetTotal();
     const finalPaidAmount = paidAmount || netTotal; // Default to full payment if not specified
 
+    const userId = parseInt(localStorage.getItem("user_id") || "0");
+
     const saleData = {
       customerId: parseInt(customerId),
+      userId,
       items: saleItems.map((item) => ({
         itemId: item.itemId,
         quantity: item.quantity,
@@ -223,10 +226,11 @@ export default function SalesManagement() {
       paidAmount: finalPaidAmount,
       paymentType,
     };
+    console.log("Submitting sale data:", saleData);
 
     createSaleMutation.mutate(saleData);
   };
-const printReceipt = (sale: Sale) => {
+ const printReceipt = (sale: Sale) => {
   const printWindow = window.open("", "", "height=600,width=800");
   if (printWindow) {
     const effectivePaid = sale.paidAmount + sale.discount;

@@ -1,18 +1,18 @@
-import axios from 'axios';
+import axios from "axios";
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: 'http://localhost:3001',
+  baseURL: "http://localhost:3005",
   timeout: 10000,
   headers: {
-    'Content-Type': 'application/json',
+    "Content-Type": "application/json",
   },
 });
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('auth_token');
+    const token = localStorage.getItem("auth_token");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -29,8 +29,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Handle unauthorized access
-      localStorage.removeItem('auth_token');
-      window.location.href = '/login';
+      localStorage.removeItem("auth_token");
+      window.location.href = "/login";
     }
     return Promise.reject(error);
   }
@@ -38,56 +38,65 @@ api.interceptors.response.use(
 // Authentication API
 export const authAPI = {
   login: (credentials: { email: string; password: string }) =>
-    api.post('/auth/login', credentials),
-  
+    api.post("/auth/login", credentials),
+
   register: (userData: { name: string; email: string; password: string }) =>
-    api.post('/auth/register', userData),
-  
-  getProfile: () => api.get('/profile'),
+    api.post("/auth/register", userData),
+
+  getProfile: () => api.get("/profile"),
 
   logout: () => {
     // Clear localStorage, cookies, or anything used for auth
-    localStorage.removeItem('auth_token'); // If using token storage
+    localStorage.removeItem("auth_token"); // If using token storage
+    localStorage.removeItem("user_id");
+    localStorage.removeItem("tokenExpiry");
+
     // Optionally, call a logout endpoint if backend supports it
   },
 };
 
 // Inventory API
 export const inventoryAPI = {
-  getAll: () => api.get('/inventory'),
+  getAll: () => api.get("/inventory"),
   getById: (id: string) => api.get(`/inventory/${id}`),
-  create: (data: any) => api.post('/inventory', data),
+  create: (data: any) => api.post("/inventory", data),
   update: (id: string, data: any) => api.put(`/inventory/${id}`, data),
   delete: (id: string) => api.delete(`/inventory/${id}`),
 };
 
 // Customers API
 export const customersAPI = {
-  getAll: () => api.get('/sales/customers'),
+  getAll: () => api.get("/sales/customers"),
   getById: (id: string) => api.get(`/sales/customers/${id}`),
-  create: (data: { name: string; phone: string }) => api.post('/sales/customers', data),
+  create: (data: { name: string; phone: string }) =>
+    api.post("/sales/customers", data),
   update: (id: string, data: any) => api.put(`/sales/customers/${id}`, data),
   delete: (id: string) => api.delete(`/sales/customers/${id}`),
-  getTransactions: (id: string) => api.get(`/sales/customers/${id}/transactions`),
-  addPayment: (id: string, data: { amount: number; paymentType: string }) => api.post(`/sales/customers/${id}/payments`, data),
+  getTransactions: (id: string) =>
+    api.get(`/sales/customers/${id}/transactions`),
+  addPayment: (id: string, data: { amount: number; paymentType: string }) =>
+    api.post(`/sales/customers/${id}/payments`, data),
 };
 
 // Sales API
 export const salesAPI = {
-  getAll: (params?: any) => api.get('/sales/sales', { params }),
+  getAll: (params?: any) => api.get("/sales/sales", { params }),
   getById: (id: string) => api.get(`/sales/${id}`),
-  create: (data: any) => api.post('/sales/sales', data),
+  create: (data: any) => api.post("/sales/sales", data),
   delete: (id: string) => api.delete(`/sales/${id}`),
-  getReceipt: (id: string, format = 'json') => api.get(`/sales/${id}/receipt`, { params: { format } }),
-  filter: (params: any) => api.get('/sales/filter', { params }),
-  report: (range: 'daily' | 'weekly') => api.get('/sales/sales/report', { params: { range } }),
+  getReceipt: (id: string, format = "json") =>
+    api.get(`/sales/${id}/receipt`, { params: { format } }),
+  filter: (params: any) => api.get("/sales/filter", { params }),
+  report: (range: "daily" | "weekly") =>
+    api.get("/sales/sales/report", { params: { range } }),
 };
 
 // Reports API
 export const reportsAPI = {
-  getOutstandingBalances: () => api.get('/sales/reports/outstanding-balances'),
-  getTopProducts: (start?: string, end?: string) => api.get('/sales/reports/top-products', { params: { start, end } }),
-  getInventoryUsage: () => api.get('/sales/reports/inventory-usage'),
+  getOutstandingBalances: () => api.get("/sales/reports/outstanding-balances"),
+  getTopProducts: (start?: string, end?: string) =>
+    api.get("/sales/reports/top-products", { params: { start, end } }),
+  getInventoryUsage: () => api.get("/sales/reports/inventory-usage"),
 };
 
 export default api;

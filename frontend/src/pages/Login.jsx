@@ -17,6 +17,8 @@ const Login = () => {
         localStorage.setItem("auth_token", res.data.token);
         //console.log("Login successful, token received:", res.data.token);
         localStorage.setItem("tokenExpiry", Date.now() + 24 * 60 * 60 * 1000); // 24h expiry
+        localStorage.setItem("user_id", res.data.user.id); // ✅ Store user ID
+        console.log("Login successful, token received:", res.data.user.id);
         navigate("/dashboard");
       } else {
         alert("Login failed. No token received.");
@@ -34,7 +36,8 @@ const Login = () => {
         className="w-full max-w-md bg-white p-8 rounded-2xl shadow-lg"
       >
         <h2 className="text-2xl font-semibold text-center mb-6 text-gray-800">
-HYPER FRESH       </h2>
+          HYPER FRESH{" "}
+        </h2>
 
         <div className="mb-4">
           <label className="block text-sm font-medium mb-1 text-gray-700">
@@ -76,4 +79,3 @@ HYPER FRESH       </h2>
 };
 
 export default Login;
-

@@ -12,13 +12,16 @@ datasource db {
 }
 
 model User {
-  id Int @id @default(autoincrement())
-  email String @unique
-  name String @unique
-  phone  String @unique
+  id       Int     @id @default(autoincrement())
+  email    String  @unique
+  name     String  @unique
+  phone    String  @unique
   password String
   createdAt DateTime @default(now())
+
+  sales    Sale[]  // 🔁 Add this reverse relation
 }
+
 
 model InventoryItem {
   id             Int                     @id @default(autoincrement())
@@ -63,6 +66,10 @@ model Sale {
   id           Int        @id @default(autoincrement())
   customer     Customer   @relation(fields: [customerId], references: [id])
   customerId   Int
+
+  user         User?      @relation(fields: [userId], references: [id])
+  userId       Int?       // <- optional now
+
   totalAmount  Float
   discount     Float      @default(0)
   paidAmount   Float
@@ -70,6 +77,8 @@ model Sale {
   items        SaleItem[]
   createdAt    DateTime   @default(now())
 }
+
+
 
 model SaleItem {
   id        Int      @id @default(autoincrement())
