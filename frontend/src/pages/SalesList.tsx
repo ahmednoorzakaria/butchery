@@ -210,7 +210,7 @@ export default function SalesManagement() {
     if (!customerId || !paymentType || saleItems.length === 0) return;
 
     const netTotal = calculateNetTotal();
-    const finalPaidAmount = paidAmount || netTotal; // Default to full payment if not specified
+    const finalPaidAmount = paidAmount ?? netTotal;
 
     const userId = parseInt(localStorage.getItem("user_id") || "0");
 
@@ -625,11 +625,15 @@ export default function SalesManagement() {
                       <div className="border-t pt-4 mt-4">
                         <div className="flex items-center space-x-2 mb-2">
                           <label className="text-sm font-medium">
-                            Amount Paid (KSH   ):
+                            Amount Paid (KSH ):
                           </label>
                           <Input
                             type="number"
-                            value={paidAmount || calculateNetTotal()}
+                            value={
+                              paidAmount !== null && paidAmount !== undefined
+                                ? paidAmount
+                                : calculateNetTotal()
+                            }
                             onChange={(e) =>
                               setPaidAmount(Number(e.target.value))
                             }
