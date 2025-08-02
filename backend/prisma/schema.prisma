@@ -3,7 +3,7 @@
 
 generator client {
   provider = "prisma-client-js"
- // output   = "../src/generated/prisma"
+ /// output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -12,14 +12,20 @@ datasource db {
 }
 
 model User {
-  id       Int     @id @default(autoincrement())
-  email    String  @unique
-  name     String  @unique
-  phone    String  @unique
-  password String
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String   @unique
+  phone     String   @unique
+  password  String
+  role      Role     @default(SALES) // 👈 Add this line
   createdAt DateTime @default(now())
 
-  sales    Sale[]  // 🔁 Add this reverse relation
+  sales     Sale[]   // reverse relation
+}
+
+enum Role {
+  ADMIN
+  SALES
 }
 
 

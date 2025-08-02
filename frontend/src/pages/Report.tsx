@@ -1,15 +1,13 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { reportsAPI, salesAPI } from "@/services/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Layout } from "@/components/layout/Layout";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { 
   TrendingUp, 
-  TrendingDown, 
   Users, 
   Package, 
   AlertTriangle,
@@ -17,10 +15,11 @@ import {
   ShoppingCart,
   BarChart3,
   Calendar,
-  RefreshCw
+  User,
+  Trophy,
+  Target
 } from "lucide-react";
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
-import { cn } from "@/lib/utils";
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import {
   ChartConfig,
   ChartContainer,
@@ -67,6 +66,11 @@ export const Report = () => {
     queryFn: () => reportsAPI.getOutstandingBalances().then(res => res.data)
   });
 
+  const { data: userPerformance, isLoading: userPerformanceLoading } = useQuery({
+    queryKey: ['userPerformance'],
+    queryFn: () => reportsAPI.getUserPerformance().then(res => res.data)
+  });
+
   // Calculate monthly report from all sales
   const monthlyReport = allSales ? (() => {
     const now = new Date();
@@ -92,7 +96,7 @@ export const Report = () => {
   })() : null;
 
   const isLoading = dailyLoading || weeklyLoading || salesLoading || 
-                    topProductsLoading || inventoryLoading || outstandingLoading;
+                    topProductsLoading || inventoryLoading || outstandingLoading || userPerformanceLoading;
 
   const currentReport = selectedPeriod === 'daily' ? dailyReport : 
                       selectedPeriod === 'weekly' ? weeklyReport : 
@@ -112,6 +116,17 @@ export const Report = () => {
     used: item.totalUsed,
     remaining: item.currentStock
   })) || [];
+
+  // User performance chart data
+  const userPerformanceChartData = userPerformance?.map((user: any) => ({
+    name: user.name === 'Unknown' ? 'Anonymous' : user.name,
+    totalSales: user.totalSales,
+    saleCount: user.saleCount
+  })) || [];
+
+  // Find top performer
+  const topPerformer = userPerformance?.reduce((top: any, user: any) => 
+    user.totalSales > (top?.totalSales || 0) ? user : top, null);
 
   if (isLoading) {
     return (
@@ -149,7 +164,7 @@ export const Report = () => {
                 <DollarSign className="h-8 w-8 text-primary" />
                 <div>
                   <p className="text-sm text-muted-foreground">{selectedPeriod.charAt(0).toUpperCase() + selectedPeriod.slice(1)} Revenue</p>
-                  <p className="text-2xl font-bold text-primary">KSH  {currentReport?.totalSales?.toLocaleString() || 0}</p>
+                  <p className="text-2xl font-bold text-primary">KSH {currentReport?.totalSales?.toLocaleString() || 0}</p>
                   <p className="text-xs text-muted-foreground">{currentReport?.numberOfSales || 0} sales</p>
                 </div>
               </div>
@@ -159,11 +174,11 @@ export const Report = () => {
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center space-x-2">
-                <TrendingUp className="h-8 w-8 text-success" />
+                <TrendingUp className="h-8 w-8 text-primary" />
                 <div>
                   <p className="text-sm text-muted-foreground">Collection Rate</p>
-                  <p className="text-2xl font-bold text-success">{collectionRate.toFixed(1)}%</p>
-                  <p className="text-xs text-success">KSH  {currentReport?.totalPaid?.toLocaleString() || 0} collected</p>
+                  <p className="text-2xl font-bold text-primary">{collectionRate.toFixed(1)}%</p>
+                  <p className="text-xs text-primary">KSH {currentReport?.totalPaid?.toLocaleString() || 0} collected</p>
                 </div>
               </div>
             </CardContent>
@@ -175,7 +190,7 @@ export const Report = () => {
                 <AlertTriangle className="h-8 w-8 text-destructive" />
                 <div>
                   <p className="text-sm text-muted-foreground">Outstanding Amount</p>
-                  <p className="text-2xl font-bold text-destructive">KSH  {totalOutstanding.toLocaleString()}</p>
+                  <p className="text-2xl font-bold text-destructive">KSH {totalOutstanding.toLocaleString()}</p>
                   <p className="text-xs text-destructive">All customers combined</p>
                 </div>
               </div>
@@ -188,7 +203,7 @@ export const Report = () => {
                 <ShoppingCart className="h-8 w-8 text-secondary" />
                 <div>
                   <p className="text-sm text-muted-foreground">Discounts Given</p>
-                  <p className="text-2xl font-bold text-secondary">KSH  {currentReport?.totalDiscount?.toLocaleString() || 0}</p>
+                  <p className="text-2xl font-bold text-secondary">KSH {currentReport?.totalDiscount?.toLocaleString() || 0}</p>
                   <p className="text-xs text-muted-foreground">Customer savings</p>
                 </div>
               </div>
@@ -196,11 +211,106 @@ export const Report = () => {
           </Card>
         </div>
 
+        {/* User Performance Section */}
+        {userPerformance && userPerformance.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Sales Performance by Team Members
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* User Performance Cards */}
+                <div className="space-y-4">
+                  {userPerformance.map((user: any, index: number) => {
+                    const collectionRate = ((user.totalPaid / user.totalSales) * 100);
+                    const isTopPerformer = user.userId === topPerformer?.userId;
+                    
+                    return (
+                      <div 
+                        key={user.userId || 'unknown'}
+                        className={`p-4 rounded-lg border ${isTopPerformer ? 'bg-primary/5 border-primary' : 'bg-muted/30'}`}
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`h-10 w-10 rounded-full flex items-center justify-center ${isTopPerformer ? 'bg-primary/10' : 'bg-muted'}`}>
+                              {isTopPerformer ? <Trophy className="h-5 w-5 text-primary" /> : <User className="h-5 w-5" />}
+                            </div>
+                            <div>
+                              <h3 className="font-semibold">{user.name}</h3>
+                              <p className="text-sm text-muted-foreground">{user.email}</p>
+                            </div>
+                          </div>
+                          {isTopPerformer && (
+                            <Badge className="bg-primary/10 text-primary">
+                              🏆 Top Performer
+                            </Badge>
+                          )}
+                        </div>
+                        
+                        <div className="grid grid-cols-3 gap-4 text-center">
+                          <div>
+                            <p className="text-2xl font-bold text-primary">KSH {user.totalSales.toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground">Total Sales</p>
+                          </div>
+                          <div>
+                            <p className="text-2xl font-bold">{user.saleCount}</p>
+                            <p className="text-xs text-muted-foreground">Transactions</p>
+                          </div>
+                          <div>
+                            <p className="text-2xl font-bold text-primary">{collectionRate.toFixed(1)}%</p>
+                            <p className="text-xs text-muted-foreground">Collection Rate</p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 pt-3 border-t">
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Amount Collected:</span>
+                            <span className="font-medium">KSH {user.totalPaid.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Outstanding:</span>
+                            <span className="font-medium text-destructive">
+                              KSH {(user.totalSales - user.totalPaid).toLocaleString()}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* User Performance Chart */}
+                <div>
+                  <h3 className="text-lg font-semibold mb-4">Sales Comparison</h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={userPerformanceChartData}>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                      <XAxis dataKey="name" className="text-muted-foreground" />
+                      <YAxis className="text-muted-foreground" />
+                      <Tooltip 
+                        contentStyle={{ 
+                          backgroundColor: 'hsl(var(--background))', 
+                          border: '1px solid hsl(var(--border))',
+                          borderRadius: '8px'
+                        }} 
+                      />
+                      <Bar dataKey="totalSales" fill="hsl(var(--primary))" name="Total Sales (KSH)" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Best & Worst Performers */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-success">🏆 Best Performer</CardTitle>
+              <CardTitle className="text-primary">🏆 Best Performer</CardTitle>
             </CardHeader>
             <CardContent>
               {currentReport?.mostSoldItem ? (
@@ -209,7 +319,7 @@ export const Report = () => {
                   <p className="text-muted-foreground">
                     Sold {currentReport.mostSoldItem.quantity} units this {selectedPeriod}
                   </p>
-                  <Badge variant="secondary" className="bg-success/10 text-success">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary">
                     Top Seller
                   </Badge>
                 </div>
@@ -317,7 +427,7 @@ export const Report = () => {
                       <p className="text-sm text-muted-foreground">Customer ID: {customer.customerId}</p>
                     </div>
                     <Badge variant="destructive">
-                      KSH  {Math.abs(customer.balance).toLocaleString()}
+                      KSH {Math.abs(customer.balance).toLocaleString()}
                     </Badge>
                   </div>
                 ))}
@@ -335,15 +445,15 @@ export const Report = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="text-center p-4 bg-primary/5 rounded-lg">
                 <h3 className="text-lg font-semibold text-primary">Total Sales</h3>
-                <p className="text-2xl font-bold">KSH  {currentReport?.totalSales?.toLocaleString() || 0}</p>
+                <p className="text-2xl font-bold">KSH {currentReport?.totalSales?.toLocaleString() || 0}</p>
               </div>
-              <div className="text-center p-4 bg-success/5 rounded-lg">
-                <h3 className="text-lg font-semibold text-success">Amount Collected</h3>
-                <p className="text-2xl font-bold">KSH  {currentReport?.totalPaid?.toLocaleString() || 0}</p>
+              <div className="text-center p-4 bg-primary/5 rounded-lg">
+                <h3 className="text-lg font-semibold text-primary">Amount Collected</h3>
+                <p className="text-2xl font-bold">KSH {currentReport?.totalPaid?.toLocaleString() || 0}</p>
               </div>
               <div className="text-center p-4 bg-destructive/5 rounded-lg">
                 <h3 className="text-lg font-semibold text-destructive">Outstanding</h3>
-                <p className="text-2xl font-bold">KSH  {((currentReport?.totalSales || 0) - (currentReport?.totalPaid || 0)).toLocaleString()}</p>
+                <p className="text-2xl font-bold">KSH {((currentReport?.totalSales || 0) - (currentReport?.totalPaid || 0)).toLocaleString()}</p>
               </div>
             </div>
           </CardContent>

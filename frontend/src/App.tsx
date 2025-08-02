@@ -11,8 +11,10 @@ import SalesList from "./pages/SalesList";
 import CustomersList from "./pages/CustomersList";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
-import ProtectedRoute from "./components/ProtectedRoute";
+import ProtectedRoute from "./components/ProtectedRoute.tsx";
 import Account from "./pages/Account";
+import UnauthorizedRedirect from "./pages/UnauthorizedRedirect";
+
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -23,10 +25,11 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+
           <Route
             path="/"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={["ADMIN", "SALES"]}>
                 <Index />
               </ProtectedRoute>
             }
@@ -34,7 +37,7 @@ const App = () => (
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={["ADMIN", "SALES"]}>
                 <Dashboard />
               </ProtectedRoute>
             }
@@ -42,7 +45,7 @@ const App = () => (
           <Route
             path="/inventory"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={["ADMIN", "SALES"]}>
                 <InventoryList />
               </ProtectedRoute>
             }
@@ -50,7 +53,7 @@ const App = () => (
           <Route
             path="/account"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={["ADMIN", "SALES"]}>
                 <Account />
               </ProtectedRoute>
             }
@@ -58,7 +61,7 @@ const App = () => (
           <Route
             path="/sales"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={["ADMIN", "SALES"]}>
                 <SalesList />
               </ProtectedRoute>
             }
@@ -66,7 +69,7 @@ const App = () => (
           <Route
             path="/customers"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={["ADMIN", "SALES"]}>
                 <CustomersList />
               </ProtectedRoute>
             }
@@ -74,13 +77,13 @@ const App = () => (
           <Route
             path="/reports"
             element={
-              <ProtectedRoute>
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
                 <Report />
               </ProtectedRoute>
             }
           />
-          {/* Fallback for undefined routes */}
           <Route path="*" element={<NotFound />} />
+          <Route path="/unauthorized" element={<UnauthorizedRedirect />} />
         </Routes>
       </BrowserRouter>
     </TooltipProvider>

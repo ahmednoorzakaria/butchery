@@ -7,7 +7,9 @@ const router = Router();
 const prisma = new PrismaClient();
 
 router.get('/', authenticateToken, async (req, res) => {
-  const userId = (req as any).user.userId;
+  //const userId = (req as any).user.userId;
+  const userId = (req as any).userId;
+
 
   const user = await prisma.user.findUnique({
     where: { id: userId },

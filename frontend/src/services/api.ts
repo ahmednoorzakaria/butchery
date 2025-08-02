@@ -13,6 +13,7 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("auth_token");
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -40,20 +41,23 @@ export const authAPI = {
   login: (credentials: { email: string; password: string }) =>
     api.post("/auth/login", credentials),
 
-  register: (userData: { name: string; email: string; password: string }) =>
-    api.post("/auth/register", userData),
+  register: (userData: {
+    name: string;
+    email: string;
+    password: string;
+    role: 'ADMIN' | 'SALES';
+  }) => api.post("/auth/register", userData),
 
   getProfile: () => api.get("/profile"),
 
   logout: () => {
-    // Clear localStorage, cookies, or anything used for auth
-    localStorage.removeItem("auth_token"); // If using token storage
+    localStorage.removeItem("auth_token");
     localStorage.removeItem("user_id");
+    localStorage.removeItem("user_role"); // 👈 Also clear role
     localStorage.removeItem("tokenExpiry");
-
-    // Optionally, call a logout endpoint if backend supports it
   },
 };
+
 
 // Inventory API
 export const inventoryAPI = {
@@ -97,6 +101,9 @@ export const reportsAPI = {
   getTopProducts: (start?: string, end?: string) =>
     api.get("/sales/reports/top-products", { params: { start, end } }),
   getInventoryUsage: () => api.get("/sales/reports/inventory-usage"),
+
+  // ✅ NEW: Get sales performance by user
+  getUserPerformance: () => api.get("/sales/reports/user-performance"), // <-- ADDED
 };
 
 export default api;

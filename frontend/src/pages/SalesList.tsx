@@ -9,7 +9,7 @@ import {
   Printer,
   ShoppingCart,
   Trash2,
-  X,
+  User,
 } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
@@ -50,6 +50,11 @@ interface Customer {
   phone: string;
 }
 
+interface User {
+  id: number;
+  name: string;
+}
+
 interface SaleItem {
   itemId: number;
   quantity: number;
@@ -68,6 +73,8 @@ interface Sale {
   paymentType: string;
   createdAt: string;
   customer: Customer;
+  user: User;
+  userId: number;
   items: SaleItem[];
 }
 
@@ -82,6 +89,7 @@ interface NewSaleItem {
 export default function SalesManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDate, setSelectedDate] = useState("today");
+  const [selectedUser, setSelectedUser] = useState("all");
   const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isSaleDetailOpen, setIsSaleDetailOpen] = useState(false);
@@ -147,11 +155,23 @@ export default function SalesManagement() {
     setPaidAmount(0);
   };
 
+  // Get unique users from sales data for filtering
+  const uniqueUsers = sales.reduce((acc: User[], sale: Sale) => {
+    if (sale.user && !acc.some(user => user.id === sale.user.id)) {
+      acc.push(sale.user);
+    }
+    return acc;
+  }, []);
+
   const filteredSales = sales.filter((sale: Sale) => {
     const matchesSearch =
       sale.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sale.id.toString().includes(searchTerm.toLowerCase());
-    return matchesSearch;
+      sale.id.toString().includes(searchTerm.toLowerCase()) ||
+      (sale.user?.name && sale.user.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    
+    const matchesUser = selectedUser === "all" || sale.user?.id.toString() === selectedUser;
+    
+    return matchesSearch && matchesUser;
   });
 
   const todayTotal = sales
@@ -226,111 +246,111 @@ export default function SalesManagement() {
       paidAmount: finalPaidAmount,
       paymentType,
     };
-    console.log("Submitting sale data:", saleData);
 
     createSaleMutation.mutate(saleData);
   };
- const printReceipt = (sale: Sale) => {
-  const printWindow = window.open("", "", "height=600,width=800");
-  if (printWindow) {
-    const effectivePaid = sale.paidAmount + sale.discount;
-    const outstanding =
-      effectivePaid < sale.totalAmount
-        ? sale.totalAmount - effectivePaid
-        : 0;
 
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Receipt - ${sale.id}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 20px; }
-            .receipt { max-width: 400px; margin: 0 auto; }
-            .header { text-align: center; margin-bottom: 20px; }
-            .item { display: flex; justify-content: space-between; margin: 5px 0; }
-            .total { border-top: 2px solid #000; margin-top: 10px; padding-top: 10px; font-weight: bold; }
-            .outstanding { color: #f59e0b; }
-            .thank-you { text-align: center; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="receipt">
-            <div class="header">
-              <h2>HYPER FRESH BUTCHERY</h2>
-              <p>Sale ID: ${sale.id}</p>
-              <p>Date: ${new Date(sale.createdAt).toLocaleDateString()}</p>
-              <p>Customer: ${sale.customer.name}</p>
-              <p>Phone: ${sale.customer.phone}</p>
-            </div>
+  const printReceipt = (sale: Sale) => {
+    const printWindow = window.open("", "", "height=600,width=800");
+    if (printWindow) {
+      const effectivePaid = sale.paidAmount + sale.discount;
+      const outstanding =
+        effectivePaid < sale.totalAmount
+          ? sale.totalAmount - effectivePaid
+          : 0;
 
-            <div class="items">
-              ${sale.items
-                .map(
-                  (item) => `
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Receipt - ${sale.id}</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              .receipt { max-width: 400px; margin: 0 auto; }
+              .header { text-align: center; margin-bottom: 20px; }
+              .item { display: flex; justify-content: space-between; margin: 5px 0; }
+              .total { border-top: 2px solid #000; margin-top: 10px; padding-top: 10px; font-weight: bold; }
+              .outstanding { color: #f59e0b; }
+              .thank-you { text-align: center; margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <div class="receipt">
+              <div class="header">
+                <h2>HYPER FRESH BUTCHERY</h2>
+                <p>Sale ID: ${sale.id}</p>
+                <p>Date: ${new Date(sale.createdAt).toLocaleDateString()}</p>
+                <p>Customer: ${sale.customer.name}</p>
+                <p>Phone: ${sale.customer.phone}</p>
+                <p>Sold by: ${sale.user?.name || 'N/A'}</p>
+              </div>
+
+              <div class="items">
+                ${sale.items
+                  .map(
+                    (item) => `
+                  <div class="item">
+                    <span>${item.item?.name || "Item"} (${item.quantity}x)</span>
+                    <span>KSH ${(
+                      item.quantity * item.price
+                    ).toLocaleString()}</span>
+                  </div>`
+                  )
+                  .join("")}
+              </div>
+
+              <div class="total">
                 <div class="item">
-                  <span>${item.item?.name || "Item"} (${item.quantity}x)</span>
-                  <span>KSH  ${(
-                    item.quantity * item.price
-                  ).toLocaleString()}</span>
-                </div>`
-                )
-                .join("")}
-            </div>
+                  <span>Subtotal</span>
+                  <span>KSH ${(sale.totalAmount - sale.discount).toLocaleString()}</span>
+                </div>
 
-            <div class="total">
-              <div class="item">
-                <span>Subtotal</span>
-                <span>KSH  ${(sale.totalAmount - sale.discount).toLocaleString()}</span>
-              </div>
+                ${
+                  sale.discount > 0
+                    ? `
+                  <div class="item">
+                    <span>Discount</span>
+                    <span>-KSH ${sale.discount.toLocaleString()}</span>
+                  </div>`
+                    : ""
+                }
 
-              ${
-                sale.discount > 0
-                  ? `
                 <div class="item">
-                  <span>Discount</span>
-                  <span>-KSH  ${sale.discount.toLocaleString()}</span>
-                </div>`
-                  : ""
-              }
+                  <span>Total</span>
+                  <span>KSH ${sale.totalAmount.toLocaleString()}</span>
+                </div>
 
-              <div class="item">
-                <span>Total</span>
-                <span>KSH  ${sale.totalAmount.toLocaleString()}</span>
+                <div class="item">
+                  <span>Amount Paid</span>
+                  <span>KSH ${sale.paidAmount.toLocaleString()}</span>
+                </div>
+
+                ${
+                  outstanding > 0
+                    ? `
+                  <div class="item outstanding">
+                    <span>Outstanding</span>
+                    <span>KSH ${outstanding.toLocaleString()}</span>
+                  </div>`
+                    : ""
+                }
+
+                <div class="item">
+                  <span>Payment Method</span>
+                  <span>${sale.paymentType}</span>
+                </div>
               </div>
 
-              <div class="item">
-                <span>Amount Paid</span>
-                <span>KSH  ${sale.paidAmount.toLocaleString()}</span>
-              </div>
-
-              ${
-                outstanding > 0
-                  ? `
-                <div class="item outstanding">
-                  <span>Outstanding</span>
-                  <span>KSH  ${outstanding.toLocaleString()}</span>
-                </div>`
-                  : ""
-              }
-
-              <div class="item">
-                <span>Payment Method</span>
-                <span>${sale.paymentType}</span>
+              <div class="thank-you">
+                <p>Thank you for your business!</p>
               </div>
             </div>
-
-            <div class="thank-you">
-              <p>Thank you for your business!</p>
-            </div>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.print();
-  }
-};
-
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
 
   const getPaymentMethodColor = (method: string) => {
     switch (method) {
@@ -367,7 +387,7 @@ export default function SalesManagement() {
                 <div>
                   <p className="text-sm text-muted-foreground">Today's Sales</p>
                   <p className="text-2xl font-bold">
-                    KSH   {todayTotal.toLocaleString()}
+                    KSH {todayTotal.toLocaleString()}
                   </p>
                 </div>
               </div>
@@ -393,7 +413,7 @@ export default function SalesManagement() {
                 <div>
                   <p className="text-sm text-muted-foreground">Avg. Sale</p>
                   <p className="text-2xl font-bold">
-                    KSH   
+                    KSH{" "}
                     {sales.length > 0
                       ? Math.round(
                           sales.reduce(
@@ -437,11 +457,27 @@ export default function SalesManagement() {
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by customer or sale ID..."
+                placeholder="Search by customer, sale ID, or username..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
+            </div>
+
+            <div className="flex gap-2">
+              <Select value={selectedUser} onValueChange={setSelectedUser}>
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue placeholder="Filter by user" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Users</SelectItem>
+                  {uniqueUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.id.toString()}>
+                      {user.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="flex gap-2">
@@ -539,7 +575,7 @@ export default function SalesManagement() {
                               key={product.id}
                               value={product.id.toString()}
                             >
-                              {product.name} - KSH   {product.price}/{product.unit}{" "}
+                              {product.name} - KSH {product.price}/{product.unit}{" "}
                               (Stock: {product.quantity})
                             </SelectItem>
                           ))}
@@ -575,12 +611,12 @@ export default function SalesManagement() {
                           <div>
                             <span className="font-medium">{item.name}</span>
                             <span className="text-muted-foreground ml-2">
-                              {item.quantity}x KSH   {item.price}
+                              {item.quantity}x KSH {item.price}
                             </span>
                           </div>
                           <div className="flex items-center space-x-2">
                             <span className="font-medium">
-                              KSH   {item.total.toLocaleString()}
+                              KSH {item.total.toLocaleString()}
                             </span>
                             <Button
                               variant="ghost"
@@ -596,7 +632,7 @@ export default function SalesManagement() {
                     <div className="border-t mt-4 pt-4 space-y-2">
                       <div className="flex items-center space-x-2">
                         <label className="text-sm font-medium">
-                          Discount (KSH   ):
+                          Discount (KSH):
                         </label>
                         <Input
                           type="number"
@@ -608,24 +644,24 @@ export default function SalesManagement() {
                       </div>
                       <div className="flex justify-between text-lg">
                         <span>Subtotal:</span>
-                        <span>KSH   {calculateSaleTotal().toLocaleString()}</span>
+                        <span>KSH {calculateSaleTotal().toLocaleString()}</span>
                       </div>
                       {discount > 0 && (
                         <div className="flex justify-between text-sm text-muted-foreground">
                           <span>Discount:</span>
-                          <span>-KSH   {discount.toLocaleString()}</span>
+                          <span>-KSH {discount.toLocaleString()}</span>
                         </div>
                       )}
                       <div className="flex justify-between text-xl font-bold">
                         <span>Total:</span>
-                        <span>KSH   {calculateNetTotal().toLocaleString()}</span>
+                        <span>KSH {calculateNetTotal().toLocaleString()}</span>
                       </div>
 
                       {/* Payment Amount Section */}
                       <div className="border-t pt-4 mt-4">
                         <div className="flex items-center space-x-2 mb-2">
                           <label className="text-sm font-medium">
-                            Amount Paid (KSH ):
+                            Amount Paid (KSH):
                           </label>
                           <Input
                             type="number"
@@ -650,7 +686,7 @@ export default function SalesManagement() {
                                 Amount Due:
                               </span>
                               <span className="font-medium text-warning-foreground">
-                                KSH   
+                                KSH{" "}
                                 {(
                                   calculateNetTotal() - paidAmount
                                 ).toLocaleString()}
@@ -670,7 +706,7 @@ export default function SalesManagement() {
                                 Change:
                               </span>
                               <span className="font-medium text-success-foreground">
-                                KSH   
+                                KSH{" "}
                                 {(
                                   paidAmount - calculateNetTotal()
                                 ).toLocaleString()}
@@ -753,6 +789,10 @@ export default function SalesManagement() {
                           )}{" "}
                           items
                         </span>
+                        <span className="flex items-center">
+                          <User className="h-4 w-4 mr-1" />
+                          Sale made by: {sale.user?.name || 'N/A'}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -760,7 +800,7 @@ export default function SalesManagement() {
                   <div className="flex items-center space-x-4">
                     <div className="text-right">
                       <p className="text-2xl font-bold text-primary">
-                        KSH   {sale.totalAmount.toLocaleString()}
+                        KSH {sale.totalAmount.toLocaleString()}
                       </p>
                       <div className="flex gap-1 justify-end">
                         <Badge
@@ -848,14 +888,9 @@ export default function SalesManagement() {
                   </div>
                   <div>
                     <label className="text-sm font-medium text-muted-foreground">
-                      Status
+                      Sale Made By
                     </label>
-                    <Badge
-                      variant="secondary"
-                      className="bg-success/10 text-success"
-                    >
-                      Completed
-                    </Badge>
+                    <p className="text-lg">{selectedSale.user?.name || 'N/A'}</p>
                   </div>
                 </div>
 
@@ -872,11 +907,11 @@ export default function SalesManagement() {
                             {item.item?.name || "Item"}
                           </span>
                           <span className="text-muted-foreground ml-2">
-                            {item.quantity}x KSH   {item.price}
+                            {item.quantity}x KSH {item.price}
                           </span>
                         </div>
                         <span className="font-medium">
-                          KSH   {(item.quantity * item.price).toLocaleString()}
+                          KSH {(item.quantity * item.price).toLocaleString()}
                         </span>
                       </div>
                     ))}
@@ -887,7 +922,7 @@ export default function SalesManagement() {
                         <div className="flex justify-between text-lg">
                           <span>Subtotal:</span>
                           <span>
-                            KSH   
+                            KSH{" "}
                             {(
                               selectedSale.totalAmount - selectedSale.discount
                             ).toLocaleString()}
@@ -896,29 +931,30 @@ export default function SalesManagement() {
                         <div className="flex justify-between text-sm text-muted-foreground">
                           <span>Discount:</span>
                           <span>
-                            -KSH   {selectedSale.discount.toLocaleString()}
+                            -KSH {selectedSale.discount.toLocaleString()}
                           </span>
                         </div>
                       </>
                     )}
                     <div className="flex justify-between text-lg font-bold">
                       <span>Total:</span>
-                      <span>KSH   {selectedSale.totalAmount.toLocaleString()}</span>
+                      <span>KSH {selectedSale.totalAmount.toLocaleString()}</span>
                     </div>
                     {selectedSale.paidAmount < selectedSale.totalAmount && (
                       <>
                         <div className="flex justify-between text-md">
                           <span>Amount Paid:</span>
                           <span>
-                            KSH   {selectedSale.paidAmount.toLocaleString()}
+                            KSH {selectedSale.paidAmount.toLocaleString()}
                           </span>
                         </div>
                         <div className="flex justify-between text-lg font-bold text-warning">
                           <span>Outstanding:</span>
                           <span>
-                            KSH 
+                            KSH{" "}
                             {(
-                              selectedSale.totalAmount - (selectedSale.paidAmount + selectedSale.discount)
+                              selectedSale.totalAmount -
+                              (selectedSale.paidAmount + selectedSale.discount)
                             ).toLocaleString()}
                           </span>
                         </div>

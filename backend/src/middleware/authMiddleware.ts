@@ -21,10 +21,9 @@ export const authenticateToken = (
       return res.status(403).json({ error: 'Invalid token' });
     }
 
-    // decoded is an object if token is valid
     if (typeof decoded === 'object' && decoded && 'userId' in decoded) {
       (req as any).userId = (decoded as any).userId;
-      console.log('User ID from token:', (req as any).userId);
+      (req as any).role = (decoded as any).role; // 👈 Add role to request
       return next();
     }
 

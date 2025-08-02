@@ -1,8 +1,14 @@
 import { Router } from "express";
 import { PrismaClient } from "@prisma/client";
 import { authenticateToken } from "../middleware/authMiddleware";
-import PDFDocument from 'pdfkit';
-import { subDays, startOfDay, endOfDay, startOfWeek, endOfWeek } from "date-fns";
+import PDFDocument from "pdfkit";
+import {
+  subDays,
+  startOfDay,
+  endOfDay,
+  startOfWeek,
+  endOfWeek,
+} from "date-fns";
 
 const prisma = new PrismaClient();
 const router = Router();
@@ -24,17 +30,12 @@ router.get("/customers", authenticateToken, async (req, res) => {
   res.json(customers);
 });
 
-
-
-
-
 // Perform a sale
-router.post("/sales", authenticateToken, async (req,res) => {
+router.post("/sales", authenticateToken, async (req, res) => {
   const { customerId, items, discount = 0, paidAmount, paymentType } = req.body;
   const userId = (req as any).userId;
   if (!userId) return res.status(401).json({ error: "User not authenticated" });
   //console.log("User ID from token:", userId);
-
 
   if (!items || items.length === 0)
     return res.status(400).json({ error: "Items are required" });
@@ -43,12 +44,20 @@ router.post("/sales", authenticateToken, async (req,res) => {
   const saleItemsData = [];
 
   for (const item of items) {
-    const inventory = await prisma.inventoryItem.findUnique({ where: { id: item.itemId } });
+    const inventory = await prisma.inventoryItem.findUnique({
+      where: { id: item.itemId },
+    });
     if (!inventory || inventory.quantity < item.quantity) {
-      return res.status(400).json({ error: `Insufficient stock for item ${item.itemId}` });
+      return res
+        .status(400)
+        .json({ error: `Insufficient stock for item ${item.itemId}` });
     }
     totalAmount += item.quantity * item.price;
-    saleItemsData.push({ itemId: item.itemId, quantity: item.quantity, price: item.price });
+    saleItemsData.push({
+      itemId: item.itemId,
+      quantity: item.quantity,
+      price: item.price,
+    });
   }
 
   const netAmount = totalAmount - discount;
@@ -57,13 +66,13 @@ router.post("/sales", authenticateToken, async (req,res) => {
     data: {
       customerId,
       userId,
-      totalAmount : netAmount,
+      totalAmount: netAmount,
       discount,
       paidAmount,
       paymentType,
       items: { create: saleItemsData },
     },
-     include: {
+    include: {
       customer: true,
       user: true,
     },
@@ -112,7 +121,9 @@ router.post("/customers/:id/payments", authenticateToken, async (req, res) => {
     });
 
     // Filter sales that are not fully paid
-    const unpaidSales = allSales.filter(sale => sale.totalAmount > sale.paidAmount);
+    const unpaidSales = allSales.filter(
+      (sale) => sale.totalAmount > sale.paidAmount
+    );
 
     let remainingPayment = amount;
 
@@ -156,27 +167,30 @@ router.post("/customers/:id/payments", authenticateToken, async (req, res) => {
       });
     }
 
-    return res.status(201).json({ message: "Payment recorded and applied to outstanding sales" });
-
+    return res
+      .status(201)
+      .json({ message: "Payment recorded and applied to outstanding sales" });
   } catch (error) {
     console.error("Error recording payment:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-
-
 // View customer balance and transactions
-router.get("/customers/:id/transactions", authenticateToken, async (req, res) => {
-  const customerId = parseInt(req.params.id);
-  const transactions = await prisma.customerTransaction.findMany({
-    where: { customerId },
-    orderBy: { createdAt: "desc" },
-  });
-  const balance = transactions.reduce((sum, tx) => sum + tx.amount, 0);
-  const status = balance === 0 ? "Settled" : balance > 0 ? "Credit" : "Due";
-  res.json({ balance, status, transactions });
-});
+router.get(
+  "/customers/:id/transactions",
+  authenticateToken,
+  async (req, res) => {
+    const customerId = parseInt(req.params.id);
+    const transactions = await prisma.customerTransaction.findMany({
+      where: { customerId },
+      orderBy: { createdAt: "desc" },
+    });
+    const balance = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+    const status = balance === 0 ? "Settled" : balance > 0 ? "Credit" : "Due";
+    res.json({ balance, status, transactions });
+  }
+);
 
 // Receipt generator
 router.get("/sales/:id/receipt", authenticateToken, async (req, res) => {
@@ -194,15 +208,19 @@ router.get("/sales/:id/receipt", authenticateToken, async (req, res) => {
 
   if (format === "pdf") {
     const doc = new PDFDocument();
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline; filename="receipt.pdf"');
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", 'inline; filename="receipt.pdf"');
     doc.pipe(res);
-    doc.fontSize(18).text('Receipt', { align: 'center' });
+    doc.fontSize(18).text("Receipt", { align: "center" });
     doc.text(`Customer: ${sale.customer.name} (${sale.customer.phone})`);
     doc.text(`Date: ${sale.createdAt}`);
     doc.moveDown();
-    sale.items.forEach(item => {
-      doc.text(`${item.item.name} x${item.quantity} @ ${item.price} = ${item.price * item.quantity}`);
+    sale.items.forEach((item) => {
+      doc.text(
+        `${item.item.name} x${item.quantity} @ ${item.price} = ${
+          item.price * item.quantity
+        }`
+      );
     });
     doc.moveDown();
     doc.text(`Discount: ${sale.discount}`);
@@ -217,15 +235,33 @@ router.get("/sales/:id/receipt", authenticateToken, async (req, res) => {
 // Sales summary by date
 router.get("/sales", authenticateToken, async (req, res) => {
   let { start, end } = req.query as { start?: string; end?: string };
-  if (!start || isNaN(Date.parse(start))) start = subDays(new Date(), 7).toISOString();
+  if (!start || isNaN(Date.parse(start)))
+    start = subDays(new Date(), 7).toISOString();
   if (!end || isNaN(Date.parse(end))) end = new Date().toISOString();
 
   try {
     const sales = await prisma.sale.findMany({
-      where: { createdAt: { gte: new Date(start), lte: new Date(end) } },
-      include: { customer: true, items: true },
-      orderBy: { createdAt: "desc" },
+      where: {
+        createdAt: {
+          gte: new Date(start),
+          lte: new Date(end),
+        },
+      },
+      include: {
+        customer: true,
+        items: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
     });
+
     res.json(sales);
   } catch (error) {
     console.error("Failed to fetch sales:", error);
@@ -245,7 +281,7 @@ router.get("/sales/filter", authenticateToken, async (req, res) => {
       },
     },
     include: { items: true, customer: true },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
   });
   res.json(sales);
 });
@@ -310,34 +346,40 @@ router.get("/sales/report", authenticateToken, async (req, res) => {
 });
 //Returns a list of customers with a negative balance (i.e. customers who owe money).
 
-router.get("/reports/outstanding-balances", authenticateToken, async (req, res) => {
-  try {
-    const customers = await prisma.customer.findMany({
-      include: {
-        transactions: true,
-      },
-    });
+router.get(
+  "/reports/outstanding-balances",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const customers = await prisma.customer.findMany({
+        include: {
+          transactions: true,
+        },
+      });
 
-    const balances = customers.map((customer) => {
-      const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
-      return {
-        customerId: customer.id,
-        name: customer.name,
-        balance,
-      };
-    });
+      const balances = customers.map((customer) => {
+        const balance = customer.transactions.reduce(
+          (sum, tx) => sum + tx.amount,
+          0
+        );
+        return {
+          customerId: customer.id,
+          name: customer.name,
+          balance,
+        };
+      });
 
-    const withNegativeBalance = balances.filter(c => c.balance < 0);
+      const withNegativeBalance = balances.filter((c) => c.balance < 0);
 
-    res.json(withNegativeBalance);
-  } catch (error) {
-    console.error("Error fetching outstanding balances:", error);
-    res.status(500).json({ error: "Server error" });
+      res.json(withNegativeBalance);
+    } catch (error) {
+      console.error("Error fetching outstanding balances:", error);
+      res.status(500).json({ error: "Server error" });
+    }
   }
-});
+);
 
 //✅ 2. GET /reports/top-products?start=...&end=...
-
 
 router.get("/reports/top-products", authenticateToken, async (req, res) => {
   const { start, end } = req.query;
@@ -347,7 +389,7 @@ router.get("/reports/top-products", authenticateToken, async (req, res) => {
 
   try {
     const items = await prisma.saleItem.groupBy({
-      by: ['itemId'],
+      by: ["itemId"],
       where: {
         sale: {
           createdAt: {
@@ -361,20 +403,24 @@ router.get("/reports/top-products", authenticateToken, async (req, res) => {
       },
       orderBy: {
         _sum: {
-          quantity: 'desc',
+          quantity: "desc",
         },
       },
       take: 10, // return top 10
     });
 
-    const withNames = await Promise.all(items.map(async item => {
-      const itemInfo = await prisma.inventoryItem.findUnique({ where: { id: item.itemId } });
-      return {
-        itemId: item.itemId,
-        name: itemInfo?.name,
-        quantitySold: item._sum.quantity,
-      };
-    }));
+    const withNames = await Promise.all(
+      items.map(async (item) => {
+        const itemInfo = await prisma.inventoryItem.findUnique({
+          where: { id: item.itemId },
+        });
+        return {
+          itemId: item.itemId,
+          name: itemInfo?.name,
+          quantitySold: item._sum.quantity,
+        };
+      })
+    );
 
     res.json(withNames);
   } catch (error) {
@@ -383,31 +429,76 @@ router.get("/reports/top-products", authenticateToken, async (req, res) => {
   }
 });
 
-
 //✅ 3. GET /reports/inventory-usage
 
 router.get("/reports/inventory-usage", authenticateToken, async (req, res) => {
   try {
     const usage = await prisma.saleItem.groupBy({
-      by: ['itemId'],
+      by: ["itemId"],
       _sum: {
         quantity: true,
       },
     });
 
-    const result = await Promise.all(usage.map(async (entry) => {
-      const item = await prisma.inventoryItem.findUnique({ where: { id: entry.itemId } });
-      return {
-        itemId: entry.itemId,
-        name: item?.name,
-        totalUsed: entry._sum.quantity,
-        currentStock: item?.quantity,
-      };
-    }));
+    const result = await Promise.all(
+      usage.map(async (entry) => {
+        const item = await prisma.inventoryItem.findUnique({
+          where: { id: entry.itemId },
+        });
+        return {
+          itemId: entry.itemId,
+          name: item?.name,
+          totalUsed: entry._sum.quantity,
+          currentStock: item?.quantity,
+        };
+      })
+    );
 
     res.json(result);
   } catch (error) {
     console.error("Error fetching inventory usage:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ 4. GET /reports/user-performance
+router.get("/reports/user-performance", authenticateToken, async (req, res) => {
+  try {
+    // Group sales by userId and sum totalAmount
+    const userSales = await prisma.sale.groupBy({
+      by: ["userId"],
+      _sum: {
+        totalAmount: true,
+        paidAmount: true,
+      },
+      _count: {
+        _all: true,
+      },
+    });
+
+    // Attach user details (name/email)
+    const results = await Promise.all(
+      userSales.map(async (entry) => {
+        const user = entry.userId
+          ? await prisma.user.findUnique({
+              where: { id: entry.userId },
+            })
+          : null;
+
+        return {
+          userId: entry.userId,
+          name: user?.name || "Unknown", // fallback for null
+          email: user?.email || "N/A",
+          totalSales: entry._sum.totalAmount || 0,
+          totalPaid: entry._sum.paidAmount || 0,
+          saleCount: entry._count._all,
+        };
+      })
+    );
+
+    res.json(results);
+  } catch (error) {
+    console.error("Error fetching user sales performance:", error);
     res.status(500).json({ error: "Server error" });
   }
 });

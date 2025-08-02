@@ -18,7 +18,9 @@ const Login = () => {
         //console.log("Login successful, token received:", res.data.token);
         localStorage.setItem("tokenExpiry", Date.now() + 24 * 60 * 60 * 1000); // 24h expiry
         localStorage.setItem("user_id", res.data.user.id); // ✅ Store user ID
-        console.log("Login successful, token received:", res.data.user.id);
+        localStorage.setItem("user_role", res.data.user.role);
+
+        console.log("Login successful, token received:", res.data.user);
         navigate("/dashboard");
       } else {
         alert("Login failed. No token received.");
