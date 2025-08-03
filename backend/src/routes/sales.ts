@@ -249,7 +249,12 @@ router.get("/sales", authenticateToken, async (req, res) => {
       },
       include: {
         customer: true,
-        items: true,
+        items: {
+          include: {
+            item: true, // This includes the item name in the response
+          },
+        },
+
         user: {
           select: {
             id: true,

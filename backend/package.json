@@ -3,10 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node ./bin/www",
-    "dev": "nodemon --watch src --ext ts,js,json --exec ts-node src/bin/www.ts",
-    "seed": "ts-node prisma/seed.ts"
-  },
+    "start": "node ./bin/www"  },
   "dependencies": {
     "@faker-js/faker": "^9.9.0",
     "@prisma/client": "^6.12.0",

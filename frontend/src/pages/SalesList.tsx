@@ -109,9 +109,13 @@ export default function SalesManagement() {
 
   // Fetch data
   const { data: sales = [], isLoading: salesLoading } = useQuery({
-    queryKey: ["sales"],
-    queryFn: () => salesAPI.getAll().then((res) => res.data),
-  });
+  queryKey: ["sales"],
+  queryFn: () => salesAPI.getAll().then((res) => {
+    //console.log("Fetched sales data:", res.data); // <-- Log the raw response
+    return res.data;
+  }),
+});
+
 
   const { data: inventory = [] } = useQuery({
     queryKey: ["inventory"],
@@ -251,97 +255,537 @@ export default function SalesManagement() {
   };
 
   const printReceipt = (sale: Sale) => {
-    const printWindow = window.open("", "", "height=600,width=800");
+    const printWindow = window.open("", "", "height=900,width=600");
     if (printWindow) {
       const effectivePaid = sale.paidAmount + sale.discount;
-      const outstanding =
-        effectivePaid < sale.totalAmount
-          ? sale.totalAmount - effectivePaid
-          : 0;
+      const outstanding = effectivePaid < sale.totalAmount ? sale.totalAmount - effectivePaid : 0;
 
       printWindow.document.write(`
         <html>
           <head>
             <title>Receipt - ${sale.id}</title>
+            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
             <style>
-              body { font-family: Arial, sans-serif; margin: 20px; }
-              .receipt { max-width: 400px; margin: 0 auto; }
-              .header { text-align: center; margin-bottom: 20px; }
-              .item { display: flex; justify-content: space-between; margin: 5px 0; }
-              .total { border-top: 2px solid #000; margin-top: 10px; padding-top: 10px; font-weight: bold; }
-              .outstanding { color: #f59e0b; }
-              .thank-you { text-align: center; margin-top: 20px; }
+              @page {
+                margin: 0.5in;
+                size: A4;
+              }
+              
+              * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+              }
+              
+              body { 
+                font-family: 'Inter', 'Arial', sans-serif; 
+                font-size: 14px;
+                line-height: 1.4;
+                color: #1a1a1a;
+                background: #f5f5f5;
+                width: 100%;
+                margin: 0;
+                padding: 20px;
+                min-height: 100vh;
+              }
+              
+              .receipt-container {
+                max-width: 480px;
+                margin: 0 auto;
+                border: 3px solid #2c3e50;
+                border-radius: 12px;
+                padding: 30px;
+                background: white;
+                box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+                position: relative;
+              }
+              
+              .receipt-container::before {
+                content: '';
+                position: absolute;
+                top: -3px;
+                left: -3px;
+                right: -3px;
+                bottom: -3px;
+                background: linear-gradient(45deg, #3498db, #2c3e50, #27ae60, #3498db);
+                border-radius: 15px;
+                z-index: -1;
+              }
+              
+              .header {
+                text-align: center;
+                margin-bottom: 30px;
+                padding-bottom: 20px;
+                border-bottom: 3px dashed #7f8c8d;
+              }
+              
+              .logo-section {
+                margin-bottom: 15px;
+              }
+              
+              .logo {
+                width: 80px;
+                height: 80px;
+                margin: 0 auto 15px;
+                display: block;
+                border-radius: 50%;
+                border: 3px solid #2c3e50;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                background: white;
+                padding: 5px;
+              }
+              
+              .business-name {
+                font-size: 26px;
+                font-weight: 700;
+                color: #2c3e50;
+                margin: 12px 0;
+                letter-spacing: 2px;
+                text-transform: uppercase;
+                text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+              }
+              
+              .business-tagline {
+                font-size: 14px;
+                color: #7f8c8d;
+                font-style: italic;
+                margin-bottom: 12px;
+                font-weight: 500;
+              }
+              
+              .contact-group {
+                background: linear-gradient(135deg, #e8f4f8, #d1ecf1);
+                padding: 12px;
+                border-radius: 8px;
+                margin: 15px 0;
+                border: 1px solid #bee5eb;
+              }
+              
+              .contact-item {
+                font-size: 12px;
+                color: #34495e;
+                margin: 3px 0;
+                font-weight: 500;
+              }
+              
+              .mpesa-highlight {
+                background: linear-gradient(135deg, #27ae60, #2ecc71);
+                color: white;
+                padding: 6px 12px;
+                border-radius: 15px;
+                font-size: 11px;
+                font-weight: 700;
+                display: inline-block;
+                margin: 8px 0;
+                box-shadow: 0 2px 8px rgba(39, 174, 96, 0.3);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+              }
+              
+              .receipt-title {
+                font-size: 20px;
+                font-weight: 700;
+                color: #2c3e50;
+                margin: 20px 0 15px 0;
+                padding: 12px;
+                background: linear-gradient(135deg, #ecf0f1, #bdc3c7);
+                border-radius: 8px;
+                text-transform: uppercase;
+                letter-spacing: 1.5px;
+                border: 2px solid #34495e;
+              }
+              
+              .transaction-info {
+                background: white;
+                padding: 18px;
+                border-radius: 10px;
+                margin: 20px 0;
+                border: 2px solid #ecf0f1;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+              }
+              
+              .info-row {
+                display: flex;
+                justify-content: space-between;
+                margin: 6px 0;
+                font-size: 13px;
+                padding: 4px 0;
+              }
+              
+              .info-label {
+                color: #7f8c8d;
+                font-weight: 600;
+                text-transform: uppercase;
+                font-size: 12px;
+              }
+              
+              .info-value {
+                color: #2c3e50;
+                font-weight: 700;
+                font-size: 13px;
+              }
+              
+              .items-section {
+                margin: 25px 0;
+                background: white;
+                border-radius: 10px;
+                overflow: hidden;
+                border: 2px solid #34495e;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+              }
+              
+              .items-header {
+                background: linear-gradient(135deg, #34495e, #2c3e50);
+                color: white;
+                padding: 12px 16px;
+                font-size: 13px;
+                font-weight: 700;
+                display: flex;
+                justify-content: space-between;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+              }
+              
+              .item-row {
+                padding: 12px 16px;
+                border-bottom: 1px solid #ecf0f1;
+                background: #fafafa;
+                transition: background-color 0.2s ease;
+              }
+              
+              .item-row:hover {
+                background: #f0f8ff;
+              }
+              
+              .item-row:last-child {
+                border-bottom: none;
+              }
+              
+              .item-name {
+                font-weight: 700;
+                color: #2c3e50;
+                font-size: 13px;
+                margin-bottom: 4px;
+                text-transform: capitalize;
+              }
+              
+              .item-details {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              }
+              
+              .item-qty-price {
+                font-size: 11px;
+                color: #7f8c8d;
+                font-weight: 500;
+              }
+              
+              .item-total {
+                font-weight: 700;
+                color: #27ae60;
+                font-size: 13px;
+                background: #e8f5e8;
+                padding: 2px 6px;
+                border-radius: 4px;
+              }
+              
+              .totals-section {
+                background: white;
+                border-radius: 10px;
+                border: 2px solid #34495e;
+                margin: 25px 0;
+                overflow: hidden;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+              }
+              
+              .total-row {
+                display: flex;
+                justify-content: space-between;
+                padding: 10px 16px;
+                font-size: 13px;
+                border-bottom: 1px solid #ecf0f1;
+                font-weight: 600;
+              }
+              
+              .total-row:last-child {
+                border-bottom: none;
+              }
+              
+              .subtotal-row {
+                background: #f8f9fa;
+                color: #495057;
+              }
+              
+              .discount-row {
+                background: linear-gradient(135deg, #fff3cd, #ffeaa7);
+                color: #856404;
+                font-weight: 700;
+              }
+              
+              .grand-total {
+                background: linear-gradient(135deg, #2c3e50, #34495e);
+                color: white;
+                font-weight: 700;
+                font-size: 16px;
+                padding: 15px 16px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+              }
+              
+              .payment-row {
+                background: linear-gradient(135deg, #d1ecf1, #a8dadc);
+                color: #0c5460;
+                font-weight: 700;
+              }
+              
+              .outstanding-row {
+                background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+                color: #721c24;
+                font-weight: 700;
+                animation: highlight 2s ease-in-out infinite;
+              }
+              
+              @keyframes highlight {
+                0%, 100% { 
+                  background: linear-gradient(135deg, #f8d7da, #f5c6cb);
+                  transform: scale(1);
+                }
+                50% { 
+                  background: linear-gradient(135deg, #f5c6cb, #f1aeb5);
+                  transform: scale(1.02);
+                }
+              }
+              
+              .payment-method {
+                text-align: center;
+                background: linear-gradient(135deg, #e8f4f8, #d1ecf1);
+                padding: 15px;
+                border-radius: 10px;
+                margin: 20px 0;
+                border: 2px solid #bee5eb;
+                box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+              }
+              
+              .payment-method-title {
+                font-size: 12px;
+                color: #0c5460;
+                margin-bottom: 6px;
+                text-transform: uppercase;
+                font-weight: 600;
+                letter-spacing: 1px;
+              }
+              
+              .payment-method-value {
+                font-weight: 700;
+                color: #2c3e50;
+                font-size: 16px;
+                text-transform: uppercase;
+                letter-spacing: 1px;
+              }
+              
+              .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 3px dashed #7f8c8d;
+              }
+              
+              .thank-you {
+                font-size: 18px;
+                font-weight: 700;
+                color: #27ae60;
+                margin: 15px 0;
+                text-transform: uppercase;
+                letter-spacing: 1.5px;
+                text-shadow: 1px 1px 3px rgba(0,0,0,0.1);
+              }
+              
+              .footer-note {
+                font-size: 11px;
+                color: #7f8c8d;
+                margin: 6px 0;
+                line-height: 1.5;
+                font-weight: 500;
+              }
+              
+              .timestamp {
+                font-size: 10px;
+                color: #95a5a6;
+                margin-top: 15px;
+                font-style: italic;
+                padding: 8px;
+                background: #f8f9fa;
+                border-radius: 6px;
+                border: 1px solid #e9ecef;
+              }
+              
+              .print-button {
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: linear-gradient(135deg, #3498db, #2980b9);
+                color: white;
+                border: none;
+                padding: 12px 24px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 600;
+                font-size: 14px;
+                box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3);
+                transition: all 0.3s ease;
+              }
+              
+              .print-button:hover {
+                background: linear-gradient(135deg, #2980b9, #1f639a);
+                transform: translateY(-2px);
+                box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4);
+              }
+              
+              @media print {
+                body { 
+                  margin: 0; 
+                  padding: 10px;
+                  font-size: 12px;
+                  background: white;
+                }
+                .receipt-container { 
+                  border: 2px solid #333; 
+                  box-shadow: none;
+                  background: white;
+                  max-width: none;
+                  margin: 0;
+                }
+                .print-button {
+                  display: none;
+                }
+              }
+              
+              @media (max-width: 600px) {
+                body {
+                  padding: 10px;
+                }
+                .receipt-container {
+                  max-width: 100%;
+                  padding: 20px;
+                  margin: 0;
+                }
+                .business-name {
+                  font-size: 22px;
+                }
+                .receipt-title {
+                  font-size: 18px;
+                }
+              }
             </style>
           </head>
           <body>
-            <div class="receipt">
+            <button class="print-button" onclick="window.print()">🖨️ Print Receipt</button>
+            
+            <div class="receipt-container">
               <div class="header">
-                <h2>HYPER FRESH BUTCHERY</h2>
-                <p>Sale ID: ${sale.id}</p>
-                <p>Date: ${new Date(sale.createdAt).toLocaleDateString()}</p>
-                <p>Customer: ${sale.customer.name}</p>
-                <p>Phone: ${sale.customer.phone}</p>
-                <p>Sold by: ${sale.user?.name || 'N/A'}</p>
+                <div class="logo-section">
+                  <img src="src/pages/logo.jpg" alt="Hyper Fresh Butchery Logo" class="logo" onerror="this.style.display='none'" />
+                  <div class="business-name">HYPER FRESH BUTCHERY</div>
+                  <div class="business-tagline">Premium Quality Meat & Poultry</div>
+                </div>
+                
+                <div class="contact-group">
+                  <div class="contact-item">📞 Phone: 0700008982</div>
+                  <div class="mpesa-highlight">M-PESA Buy Goods: 4242427</div>
+                </div>
+                
+                <div class="receipt-title">Official Sales Receipt</div>
               </div>
 
-              <div class="items">
-                ${sale.items
-                  .map(
-                    (item) => `
-                  <div class="item">
-                    <span>${item.item?.name || "Item"} (${item.quantity}x)</span>
-                    <span>KSH ${(
-                      item.quantity * item.price
-                    ).toLocaleString()}</span>
-                  </div>`
-                  )
-                  .join("")}
+              <div class="transaction-info">
+                <div class="info-row">
+                  <span class="info-label">Receipt No:</span>
+                  <span class="info-value">#${sale.id.toString().padStart(6, '0')}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Date:</span>
+                  <span class="info-value">${new Date(sale.createdAt).toLocaleDateString('en-GB')}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Time:</span>
+                  <span class="info-value">${new Date(sale.createdAt).toLocaleTimeString('en-GB', { hour12: false })}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Customer:</span>
+                  <span class="info-value">${sale.customer.name}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Phone:</span>
+                  <span class="info-value">${sale.customer.phone}</span>
+                </div>
+                <div class="info-row">
+                  <span class="info-label">Served by:</span>
+                  <span class="info-value">${sale.user?.name || 'Staff Member'}</span>
+                </div>
               </div>
 
-              <div class="total">
-                <div class="item">
+              <div class="items-section">
+                <div class="items-header">
+                  <span>ITEMS PURCHASED</span>
+                  <span>AMOUNT</span>
+                </div>
+                
+                ${sale.items.map(item => `
+                  <div class="item-row">
+                    <div class="item-name">${item.item?.name || "Product"}</div>
+                    <div class="item-details">
+                      <div class="item-qty-price">${item.quantity} × KSH ${item.price.toLocaleString()}</div>
+                      <div class="item-total">KSH ${(item.quantity * item.price).toLocaleString()}</div>
+                    </div>
+                  </div>
+                `).join("")}
+              </div>
+
+              <div class="totals-section">
+                <div class="total-row subtotal-row">
                   <span>Subtotal</span>
-                  <span>KSH ${(sale.totalAmount - sale.discount).toLocaleString()}</span>
+                  <span>KSH ${(sale.totalAmount + sale.discount).toLocaleString()}</span>
                 </div>
 
-                ${
-                  sale.discount > 0
-                    ? `
-                  <div class="item">
-                    <span>Discount</span>
-                    <span>-KSH ${sale.discount.toLocaleString()}</span>
-                  </div>`
-                    : ""
-                }
+                ${sale.discount > 0 ? `
+                <div class="total-row discount-row">
+                  <span>Discount Applied</span>
+                  <span>-KSH ${sale.discount.toLocaleString()}</span>
+                </div>` : ""}
 
-                <div class="item">
-                  <span>Total</span>
+                <div class="total-row grand-total">
+                  <span>TOTAL AMOUNT</span>
                   <span>KSH ${sale.totalAmount.toLocaleString()}</span>
                 </div>
 
-                <div class="item">
+                <div class="total-row payment-row">
                   <span>Amount Paid</span>
                   <span>KSH ${sale.paidAmount.toLocaleString()}</span>
                 </div>
 
-                ${
-                  outstanding > 0
-                    ? `
-                  <div class="item outstanding">
-                    <span>Outstanding</span>
-                    <span>KSH ${outstanding.toLocaleString()}</span>
-                  </div>`
-                    : ""
-                }
-
-                <div class="item">
-                  <span>Payment Method</span>
-                  <span>${sale.paymentType}</span>
-                </div>
+                ${outstanding > 0 ? `
+                <div class="total-row outstanding-row">
+                  <span>⚠️ Outstanding Balance</span>
+                  <span>KSH ${outstanding.toLocaleString()}</span>
+                </div>` : ""}
               </div>
 
-              <div class="thank-you">
-                <p>Thank you for your business!</p>
+              <div class="payment-method">
+                <div class="payment-method-title">Payment Method</div>
+                <div class="payment-method-value">${sale.paymentType}</div>
+                ${sale.paymentType === 'TRANSFER' || sale.paymentType === 'MPESA' ? 
+                  '<div style="font-size: 11px; color: #27ae60; margin-top: 6px; font-weight: 600;">✓ M-PESA Till No: 4242427</div>' : ''}
+              </div>
+
+              <div class="footer">
+                <div class="thank-you">Thank You For Your Business!</div>
+                <div class="footer-note">📍 Visit us again for fresh, quality meat products</div>
+                <div class="footer-note">🔄 Goods sold are not returnable unless defective</div>
+                <div class="footer-note">💬 For inquiries, call: 0700008982</div>
+                <div class="timestamp">
+                  Receipt generated: ${new Date().toLocaleString('en-GB')}
+                </div>
               </div>
             </div>
           </body>
@@ -351,6 +795,7 @@ export default function SalesManagement() {
       printWindow.print();
     }
   };
+
 
   const getPaymentMethodColor = (method: string) => {
     switch (method) {
@@ -507,7 +952,7 @@ export default function SalesManagement() {
 
           <Dialog open={isNewSaleOpen} onOpenChange={setIsNewSaleOpen}>
             <DialogTrigger asChild>
-              <Button variant="hero" size="lg" className="w-full md:w-auto">
+              <Button variant="default" size="lg" className="w-full md:w-auto">
                 <Plus className="h-5 w-5 mr-2" />
                 New Sale
               </Button>
@@ -603,25 +1048,26 @@ export default function SalesManagement() {
                   <div className="border rounded-lg p-4">
                     <h3 className="font-medium mb-4">Sale Items</h3>
                     <div className="space-y-2">
-                      {saleItems.map((item) => (
+                      {saleItems.map((items) => (
+                        //console.log("Sale item:", items),
                         <div
-                          key={item.itemId}
+                          key={items.itemId}
                           className="flex items-center justify-between p-2 bg-muted rounded"
                         >
                           <div>
-                            <span className="font-medium">{item.name}</span>
+                            <span className="font-medium">{items.item.name}</span>
                             <span className="text-muted-foreground ml-2">
-                              {item.quantity}x KSH {item.price}
+                              {items.quantity}x KSH {items.price}
                             </span>
                           </div>
                           <div className="flex items-center space-x-2">
                             <span className="font-medium">
-                              KSH {item.total.toLocaleString()}
+                              KSH {items.total.toLocaleString()}
                             </span>
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => removeItemFromSale(item.itemId)}
+                              onClick={() => removeItemFromSale(items.itemId)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>
@@ -750,7 +1196,7 @@ export default function SalesManagement() {
           {filteredSales.map((sale: Sale) => (
             <Card
               key={sale.id}
-              className="hover:shadow-primary transition-smooth"
+              className="hover:shadow-lg transition-all duration-300"
             >
               <CardContent className="p-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between space-y-4 md:space-y-0">

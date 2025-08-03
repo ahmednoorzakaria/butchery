@@ -12,7 +12,7 @@ import salesRouter from './routes/sales';
 
 const app = express();
 
-const allowedOrigin = 'http://localhost:8080';
+const allowedOrigin = 'http://192.168.0.111:8080';
 
 const corsOptions = {
   origin: allowedOrigin,
