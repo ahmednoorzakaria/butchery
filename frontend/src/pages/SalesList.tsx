@@ -1055,7 +1055,7 @@ export default function SalesManagement() {
                           className="flex items-center justify-between p-2 bg-muted rounded"
                         >
                           <div>
-                            <span className="font-medium">{items.item.name}</span>
+                            <span className="font-medium">{items.name}</span>
                             <span className="text-muted-foreground ml-2">
                               {items.quantity}x KSH {items.price}
                             </span>
@@ -1370,7 +1370,7 @@ export default function SalesManagement() {
                           <span>
                             KSH{" "}
                             {(
-                              selectedSale.totalAmount - selectedSale.discount
+                              selectedSale.totalAmount + selectedSale.discount
                             ).toLocaleString()}
                           </span>
                         </div>

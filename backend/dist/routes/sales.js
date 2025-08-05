@@ -1,0 +1,441 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const client_1 = require("@prisma/client");
+const authMiddleware_1 = require("../middleware/authMiddleware");
+const pdfkit_1 = __importDefault(require("pdfkit"));
+const date_fns_1 = require("date-fns");
+const prisma = new client_1.PrismaClient();
+const router = (0, express_1.Router)();
+// Add a customer
+router.post("/customers", authMiddleware_1.authenticateToken, async (req, res) => {
+    const { name, phone } = req.body;
+    try {
+        const customer = await prisma.customer.create({ data: { name, phone } });
+        res.status(201).json(customer);
+    }
+    catch (error) {
+        res.status(400).json({ error: "Phone number must be unique" });
+    }
+});
+// List all customers
+router.get("/customers", authMiddleware_1.authenticateToken, async (req, res) => {
+    const customers = await prisma.customer.findMany();
+    res.json(customers);
+});
+// Perform a sale
+router.post("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
+    const { customerId, items, discount = 0, paidAmount, paymentType } = req.body;
+    const userId = req.userId;
+    if (!userId)
+        return res.status(401).json({ error: "User not authenticated" });
+    //console.log("User ID from token:", userId);
+    if (!items || items.length === 0)
+        return res.status(400).json({ error: "Items are required" });
+    let totalAmount = 0;
+    const saleItemsData = [];
+    for (const item of items) {
+        const inventory = await prisma.inventoryItem.findUnique({
+            where: { id: item.itemId },
+        });
+        if (!inventory || inventory.quantity < item.quantity) {
+            return res
+                .status(400)
+                .json({ error: `Insufficient stock for item ${item.itemId}` });
+        }
+        totalAmount += item.quantity * item.price;
+        saleItemsData.push({
+            itemId: item.itemId,
+            quantity: item.quantity,
+            price: item.price,
+        });
+    }
+    const netAmount = totalAmount - discount;
+    const sale = await prisma.sale.create({
+        data: {
+            customerId,
+            userId,
+            totalAmount: netAmount,
+            discount,
+            paidAmount,
+            paymentType,
+            items: { create: saleItemsData },
+        },
+        include: {
+            customer: true,
+            user: true,
+        },
+    });
+    for (const item of items) {
+        await prisma.inventoryItem.update({
+            where: { id: item.itemId },
+            data: { quantity: { decrement: item.quantity } },
+        });
+        await prisma.inventoryTransaction.create({
+            data: {
+                itemId: item.itemId,
+                type: "STOCK_OUT",
+                quantity: item.quantity,
+            },
+        });
+    }
+    const balance = paidAmount - netAmount;
+    await prisma.customerTransaction.create({
+        data: {
+            customerId,
+            amount: balance,
+            reason: "Sale",
+        },
+    });
+    res.status(201).json({ sale });
+});
+// Record a payment for a customer
+router.post("/customers/:id/payments", authMiddleware_1.authenticateToken, async (req, res) => {
+    const customerId = parseInt(req.params.id);
+    const { amount, paymentType } = req.body;
+    if (!amount || isNaN(amount)) {
+        return res.status(400).json({ error: "Valid amount is required" });
+    }
+    try {
+        // Get all sales for the customer, ordered oldest first
+        const allSales = await prisma.sale.findMany({
+            where: { customerId },
+            orderBy: { createdAt: "asc" },
+        });
+        // Filter sales that are not fully paid
+        const unpaidSales = allSales.filter((sale) => sale.totalAmount > sale.paidAmount);
+        let remainingPayment = amount;
+        for (const sale of unpaidSales) {
+            const saleDue = sale.totalAmount - sale.paidAmount;
+            if (saleDue <= 0)
+                continue;
+            const paymentToApply = Math.min(saleDue, remainingPayment);
+            // Update the sale with the partial or full payment
+            await prisma.sale.update({
+                where: { id: sale.id },
+                data: {
+                    paidAmount: {
+                        increment: paymentToApply,
+                    },
+                },
+            });
+            // Record a transaction for this payment
+            await prisma.customerTransaction.create({
+                data: {
+                    customerId,
+                    amount: paymentToApply,
+                    reason: `Payment of ${paymentToApply} applied to Sale #${sale.id} via ${paymentType}`,
+                },
+            });
+            remainingPayment -= paymentToApply;
+            if (remainingPayment <= 0)
+                break;
+        }
+        // If there's leftover payment, treat it as advance/credit
+        if (remainingPayment > 0) {
+            await prisma.customerTransaction.create({
+                data: {
+                    customerId,
+                    amount: remainingPayment,
+                    reason: `Advance payment via ${paymentType}`,
+                },
+            });
+        }
+        return res
+            .status(201)
+            .json({ message: "Payment recorded and applied to outstanding sales" });
+    }
+    catch (error) {
+        console.error("Error recording payment:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+// View customer balance and transactions
+router.get("/customers/:id/transactions", authMiddleware_1.authenticateToken, async (req, res) => {
+    const customerId = parseInt(req.params.id);
+    const transactions = await prisma.customerTransaction.findMany({
+        where: { customerId },
+        orderBy: { createdAt: "desc" },
+    });
+    const balance = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+    const status = balance === 0 ? "Settled" : balance > 0 ? "Credit" : "Due";
+    res.json({ balance, status, transactions });
+});
+// Receipt generator
+router.get("/sales/:id/receipt", authMiddleware_1.authenticateToken, async (req, res) => {
+    const saleId = parseInt(req.params.id);
+    const format = req.query.format || "json";
+    const sale = await prisma.sale.findUnique({
+        where: { id: saleId },
+        include: {
+            customer: true,
+            user: true,
+            items: { include: { item: true } },
+        },
+    });
+    if (!sale)
+        return res.status(404).json({ error: "Sale not found" });
+    if (format === "pdf") {
+        const doc = new pdfkit_1.default();
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", 'inline; filename="receipt.pdf"');
+        doc.pipe(res);
+        doc.fontSize(18).text("Receipt", { align: "center" });
+        doc.text(`Customer: ${sale.customer.name} (${sale.customer.phone})`);
+        doc.text(`Date: ${sale.createdAt}`);
+        doc.moveDown();
+        sale.items.forEach((item) => {
+            doc.text(`${item.item.name} x${item.quantity} @ ${item.price} = ${item.price * item.quantity}`);
+        });
+        doc.moveDown();
+        doc.text(`Discount: ${sale.discount}`);
+        doc.text(`Total: ${sale.totalAmount}`);
+        doc.text(`Paid: ${sale.paidAmount}`);
+        doc.end();
+    }
+    else {
+        res.json(sale);
+    }
+});
+// Sales summary by date
+router.get("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
+    let { start, end } = req.query;
+    if (!start || isNaN(Date.parse(start)))
+        start = (0, date_fns_1.subDays)(new Date(), 7).toISOString();
+    if (!end || isNaN(Date.parse(end)))
+        end = new Date().toISOString();
+    try {
+        const sales = await prisma.sale.findMany({
+            where: {
+                createdAt: {
+                    gte: new Date(start),
+                    lte: new Date(end),
+                },
+            },
+            include: {
+                customer: true,
+                items: {
+                    include: {
+                        item: true, // This includes the item name in the response
+                    },
+                },
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+        res.json(sales);
+    }
+    catch (error) {
+        console.error("Failed to fetch sales:", error);
+        res.status(500).json({ error: "Server error fetching sales" });
+    }
+});
+// Filter sales by customer/date
+router.get("/sales/filter", authMiddleware_1.authenticateToken, async (req, res) => {
+    const { customerId, start, end } = req.query;
+    const sales = await prisma.sale.findMany({
+        where: {
+            customerId: parseInt(customerId),
+            createdAt: {
+                gte: new Date(start),
+                lte: new Date(end),
+            },
+        },
+        include: { items: true, customer: true },
+        orderBy: { createdAt: "desc" },
+    });
+    res.json(sales);
+});
+// Daily/weekly sales report
+router.get("/sales/report", authMiddleware_1.authenticateToken, async (req, res) => {
+    const { range } = req.query;
+    const now = new Date();
+    const start = range === "weekly" ? (0, date_fns_1.startOfWeek)(now) : (0, date_fns_1.startOfDay)(now);
+    const end = range === "weekly" ? (0, date_fns_1.endOfWeek)(now) : (0, date_fns_1.endOfDay)(now);
+    // Fetch sales within range
+    const sales = await prisma.sale.findMany({
+        where: {
+            createdAt: {
+                gte: start,
+                lte: end,
+            },
+        },
+        include: {
+            items: {
+                include: {
+                    item: true, // fetch item details
+                },
+            },
+        },
+    });
+    const totalSales = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+    const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
+    const totalDiscount = sales.reduce((sum, sale) => sum + sale.discount, 0);
+    const itemSalesCount = {};
+    for (const sale of sales) {
+        for (const saleItem of sale.items) {
+            const id = saleItem.itemId;
+            const name = saleItem.item.name;
+            if (!itemSalesCount[id]) {
+                itemSalesCount[id] = { name, quantity: 0 };
+            }
+            itemSalesCount[id].quantity += saleItem.quantity;
+        }
+    }
+    const sortedItems = Object.entries(itemSalesCount)
+        .sort((a, b) => b[1].quantity - a[1].quantity)
+        .map(([id, data]) => ({ id, ...data }));
+    const mostSoldItem = sortedItems[0] || null;
+    const leastSoldItem = sortedItems[sortedItems.length - 1] || null;
+    return res.json({
+        range,
+        totalSales,
+        totalPaid,
+        totalDiscount,
+        numberOfSales: sales.length,
+        mostSoldItem,
+        leastSoldItem,
+    });
+});
+//Returns a list of customers with a negative balance (i.e. customers who owe money).
+router.get("/reports/outstanding-balances", authMiddleware_1.authenticateToken, async (req, res) => {
+    try {
+        const customers = await prisma.customer.findMany({
+            include: {
+                transactions: true,
+            },
+        });
+        const balances = customers.map((customer) => {
+            const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+            return {
+                customerId: customer.id,
+                name: customer.name,
+                balance,
+            };
+        });
+        const withNegativeBalance = balances.filter((c) => c.balance < 0);
+        res.json(withNegativeBalance);
+    }
+    catch (error) {
+        console.error("Error fetching outstanding balances:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+//✅ 2. GET /reports/top-products?start=...&end=...
+router.get("/reports/top-products", authMiddleware_1.authenticateToken, async (req, res) => {
+    const { start, end } = req.query;
+    const startDate = start ? new Date(start) : (0, date_fns_1.subDays)(new Date(), 7);
+    const endDate = end ? new Date(end) : new Date();
+    try {
+        const items = await prisma.saleItem.groupBy({
+            by: ["itemId"],
+            where: {
+                sale: {
+                    createdAt: {
+                        gte: startDate,
+                        lte: endDate,
+                    },
+                },
+            },
+            _sum: {
+                quantity: true,
+            },
+            orderBy: {
+                _sum: {
+                    quantity: "desc",
+                },
+            },
+            take: 10, // return top 10
+        });
+        const withNames = await Promise.all(items.map(async (item) => {
+            const itemInfo = await prisma.inventoryItem.findUnique({
+                where: { id: item.itemId },
+            });
+            return {
+                itemId: item.itemId,
+                name: itemInfo?.name,
+                quantitySold: item._sum.quantity,
+            };
+        }));
+        res.json(withNames);
+    }
+    catch (error) {
+        console.error("Error fetching top products:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+//✅ 3. GET /reports/inventory-usage
+router.get("/reports/inventory-usage", authMiddleware_1.authenticateToken, async (req, res) => {
+    try {
+        const usage = await prisma.saleItem.groupBy({
+            by: ["itemId"],
+            _sum: {
+                quantity: true,
+            },
+        });
+        const result = await Promise.all(usage.map(async (entry) => {
+            const item = await prisma.inventoryItem.findUnique({
+                where: { id: entry.itemId },
+            });
+            return {
+                itemId: entry.itemId,
+                name: item?.name,
+                totalUsed: entry._sum.quantity,
+                currentStock: item?.quantity,
+            };
+        }));
+        res.json(result);
+    }
+    catch (error) {
+        console.error("Error fetching inventory usage:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// ✅ 4. GET /reports/user-performance
+router.get("/reports/user-performance", authMiddleware_1.authenticateToken, async (req, res) => {
+    try {
+        // Group sales by userId and sum totalAmount
+        const userSales = await prisma.sale.groupBy({
+            by: ["userId"],
+            _sum: {
+                totalAmount: true,
+                paidAmount: true,
+            },
+            _count: {
+                _all: true,
+            },
+        });
+        // Attach user details (name/email)
+        const results = await Promise.all(userSales.map(async (entry) => {
+            const user = entry.userId
+                ? await prisma.user.findUnique({
+                    where: { id: entry.userId },
+                })
+                : null;
+            return {
+                userId: entry.userId,
+                name: user?.name || "Unknown", // fallback for null
+                email: user?.email || "N/A",
+                totalSales: entry._sum.totalAmount || 0,
+                totalPaid: entry._sum.paidAmount || 0,
+                saleCount: entry._count._all,
+            };
+        }));
+        res.json(results);
+    }
+    catch (error) {
+        console.error("Error fetching user sales performance:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+exports.default = router;

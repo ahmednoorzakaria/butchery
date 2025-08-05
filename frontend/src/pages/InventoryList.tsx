@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Package, Search, MoreVertical, Edit, Trash2, ArrowLeft, Save, X } from "lucide-react";
+import { Plus, Package, Search, MoreVertical, Edit, Trash2, ArrowLeft, Save, X, Beef, Bird, Milk, Leaf } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +47,37 @@ interface InventoryItem {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// Category Icons
+const getCategoryIcon = (category: string) => {
+  switch (category.toLowerCase()) {
+    case 'meat':
+      return Beef;
+    case 'poultry':
+      return Bird;
+    case 'dairy':
+      return Milk;
+    case 'spices':
+      return Leaf;
+    default:
+      return Package;
+  }
+};
+
+const getCategoryIconColor = (category: string) => {
+  switch (category.toLowerCase()) {
+    case 'meat':
+      return "text-red-500";
+    case 'poultry':
+      return "text-yellow-500";
+    case 'dairy':
+      return "text-blue-500";
+    case 'spices':
+      return "text-green-500";
+    default:
+      return "text-muted-foreground";
+  }
+};
 
 export default function InventoryManagement() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -249,6 +280,8 @@ export default function InventoryManagement() {
 
   // Product Detail View
   if (selectedProduct) {
+    const CategoryIcon = getCategoryIcon(selectedProduct.category);
+    
     return (
       <Layout title="Product Details" showSearch={false}>
         <div className="space-y-6">
@@ -264,7 +297,7 @@ export default function InventoryManagement() {
             <div className="flex gap-2">
               {editMode ? (
                 <>
-                  <Button onClick={handleUpdateItem} variant="hero" disabled={submitting}>
+                  <Button onClick={handleUpdateItem} variant="default" disabled={submitting}>
                     {submitting ? <LoadingSpinner /> : <Save className="h-4 w-4 mr-2" />}
                     Save Changes
                   </Button>
@@ -281,7 +314,7 @@ export default function InventoryManagement() {
                   </Button>
                 </>
               ) : (
-                <Button onClick={() => handleEditProduct(selectedProduct)} variant="hero">
+                <Button onClick={() => handleEditProduct(selectedProduct)} variant="default">
                   <Edit className="h-4 w-4 mr-2" />
                   Edit Product
                 </Button>
@@ -290,15 +323,11 @@ export default function InventoryManagement() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Product Image */}
+            {/* Product Icon */}
             <Card>
               <CardContent className="p-6">
-                <div className="aspect-square bg-muted rounded-lg overflow-hidden mb-4">
-                  <img 
-                    src="/api/placeholder/300/200" 
-                    alt={selectedProduct.name}
-                    className="w-full h-full object-cover"
-                  />
+                <div className="aspect-square bg-muted rounded-lg overflow-hidden mb-4 flex items-center justify-center">
+                  <CategoryIcon className={cn("h-32 w-32", getCategoryIconColor(selectedProduct.category))} />
                 </div>
                 {selectedProduct.lowStockAlert && (
                   <Badge className="bg-warning text-warning-foreground">
@@ -356,7 +385,7 @@ export default function InventoryManagement() {
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="edit-price">Price (SH  )</Label>
+                      <Label htmlFor="edit-price">Price (SH)</Label>
                       <Input
                         id="edit-price"
                         type="number"
@@ -392,7 +421,7 @@ export default function InventoryManagement() {
                     </div>
                     <div>
                       <Label>Price per {selectedProduct.unit}</Label>
-                      <p className="text-xl font-bold">SH   {selectedProduct.price.toLocaleString()}</p>
+                      <p className="text-xl font-bold">SH {selectedProduct.price.toLocaleString()}</p>
                     </div>
                     <div>
                       <Label>Current Stock</Label>
@@ -406,7 +435,7 @@ export default function InventoryManagement() {
                     <div>
                       <Label>Total Value</Label>
                       <p className="text-lg font-semibold">
-                        SH   {(selectedProduct.price * selectedProduct.quantity).toLocaleString()}
+                        SH {(selectedProduct.price * selectedProduct.quantity).toLocaleString()}
                       </p>
                     </div>
                   </>
@@ -466,7 +495,7 @@ export default function InventoryManagement() {
                 <Package className="h-5 w-5 text-primary" />
                 <div>
                   <p className="text-sm text-muted-foreground">Total Value</p>
-                  <p className="text-2xl font-bold">SH   {inventory.reduce((acc, item) => acc + (item.price * item.quantity), 0).toLocaleString()}</p>
+                  <p className="text-2xl font-bold">SH {inventory.reduce((acc, item) => acc + (item.price * item.quantity), 0).toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
@@ -500,7 +529,7 @@ export default function InventoryManagement() {
             </div>
           </div>
           
-          <Button variant="hero" size="lg" className="w-full md:w-auto" onClick={handleOpenAddDialog}>
+          <Button variant="default" size="lg" className="w-full md:w-auto" onClick={handleOpenAddDialog}>
             <Plus className="h-5 w-5 mr-2" />
             Add New Item
           </Button>
@@ -508,86 +537,85 @@ export default function InventoryManagement() {
 
         {/* Inventory Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredInventory.map((item) => (
-            <Card 
-              key={item.id} 
-              className="overflow-hidden hover:shadow-elegant transition-smooth cursor-pointer"
-              onClick={() => handleViewProduct(item)}
-            >
-              <div className="aspect-video bg-muted relative">
-                <img 
-                  src="/api/placeholder/300/200" 
-                  alt={item.name}
-                  className="w-full h-full object-cover"
-                />
-                {item.lowStockAlert && (
-                  <Badge className="absolute top-2 right-2 bg-warning text-warning-foreground">
-                    Low Stock
-                  </Badge>
-                )}
-              </div>
-              
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-base truncate">{item.name}</CardTitle>
-                    <p className="text-sm text-muted-foreground">ID: #{item.id}</p>
-                  </div>
-                  
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon-sm">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="bg-popover">
-                      <DropdownMenuItem onClick={(e) => {
-                        e.stopPropagation();
-                        handleEditProduct(item);
-                      }}>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Edit Item
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem 
-                        className="text-destructive"
-                        onClick={(e) => {
+          {filteredInventory.map((item) => {
+            const CategoryIcon = getCategoryIcon(item.category);
+            return (
+              <Card 
+                key={item.id} 
+                className="overflow-hidden hover:shadow-elegant transition-smooth cursor-pointer"
+                onClick={() => handleViewProduct(item)}
+              >
+                <div className="aspect-video bg-muted relative flex items-center justify-center">
+                  <CategoryIcon className={cn("h-16 w-16", getCategoryIconColor(item.category))} />
+                  {item.lowStockAlert && (
+                    <Badge className="absolute top-2 right-2 bg-warning text-warning-foreground">
+                      Low Stock
+                    </Badge>
+                  )}
+                </div>
+                
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-base truncate">{item.name}</CardTitle>
+                      <p className="text-sm text-muted-foreground">ID: #{item.id}</p>
+                    </div>
+                    
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="bg-popover">
+                        <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation();
-                          handleDeleteItem(item.id);
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete Item
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </CardHeader>
-              
-              <CardContent className="pt-0">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Price/{item.unit}</span>
-                    <span className="font-semibold">SH   {item.price.toLocaleString()}</span>
+                          handleEditProduct(item);
+                        }}>
+                          <Edit className="h-4 w-4 mr-2" />
+                          Edit Item
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          className="text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteItem(item.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Item
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Stock</span>
-                    <span className={cn(
-                      "font-semibold",
-                      item.lowStockAlert ? "text-warning" : "text-success"
-                    )}>
-                      {item.quantity} {item.unit}
-                    </span>
+                </CardHeader>
+                
+                <CardContent className="pt-0">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Price/{item.unit}</span>
+                      <span className="font-semibold">SH {item.price.toLocaleString()}</span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Stock</span>
+                      <span className={cn(
+                        "font-semibold",
+                        item.lowStockAlert ? "text-warning" : "text-success"
+                      )}>
+                        {item.quantity} {item.unit}
+                      </span>
+                    </div>
+                    
+                    <Badge variant="secondary" className="w-fit">
+                      {item.category}
+                    </Badge>
                   </div>
-                  
-                  <Badge variant="secondary" className="w-fit">
-                    {item.category}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
         
         {filteredInventory.length === 0 && (
@@ -657,7 +685,7 @@ export default function InventoryManagement() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="price">Price (SH   )</Label>
+                <Label htmlFor="price">Price (SH)</Label>
                 <Input
                   id="price"
                   type="number"
@@ -686,7 +714,7 @@ export default function InventoryManagement() {
               }} disabled={submitting}>
                 Cancel
               </Button>
-              <Button onClick={handleAddItem} variant="hero" disabled={submitting}>
+              <Button onClick={handleAddItem} variant="default" disabled={submitting}>
                 {submitting ? <LoadingSpinner /> : "Add Item"}
               </Button>
             </DialogFooter>

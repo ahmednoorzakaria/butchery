@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: "http://localhost:3005",
+  baseURL: "http://13.49.240.213:3000",
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
@@ -91,8 +91,9 @@ export const salesAPI = {
   getReceipt: (id: string, format = "json") =>
     api.get(`/sales/${id}/receipt`, { params: { format } }),
   filter: (params: any) => api.get("/sales/filter", { params }),
-  report: (range: "daily" | "weekly") =>
-    api.get("/sales/sales/report", { params: { range } }),
+ report: (range: "daily" | "weekly" | "monthly" | "yearly") =>
+  api.get("/sales/sales/report", { params: { range } }),
+
 };
 
 // Reports API

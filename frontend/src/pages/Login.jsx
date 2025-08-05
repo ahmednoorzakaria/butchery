@@ -21,7 +21,7 @@ const Login = () => {
         localStorage.setItem("user_role", res.data.user.role);
 
         console.log("Login successful, token received:", res.data.user);
-        navigate("/dashboard");
+        navigate("/sales");
       } else {
         alert("Login failed. No token received.");
       }

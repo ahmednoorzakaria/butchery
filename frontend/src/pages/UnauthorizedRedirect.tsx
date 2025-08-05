@@ -7,7 +7,7 @@ const UnauthorizedRedirect = () => {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      navigate("/inventory");
+      navigate("/sales");
     }, 2000); // wait 2 seconds then redirect
 
     return () => clearTimeout(timer);
