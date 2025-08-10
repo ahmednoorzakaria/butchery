@@ -1,314 +1,13 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const client_1 = require("@prisma/client");
 const authMiddleware_1 = require("../middleware/authMiddleware");
-const pdfkit_1 = __importDefault(require("pdfkit"));
 const date_fns_1 = require("date-fns");
 const prisma = new client_1.PrismaClient();
 const router = (0, express_1.Router)();
-// Add a customer
-router.post("/customers", authMiddleware_1.authenticateToken, async (req, res) => {
-    const { name, phone } = req.body;
-    try {
-        const customer = await prisma.customer.create({ data: { name, phone } });
-        res.status(201).json(customer);
-    }
-    catch (error) {
-        res.status(400).json({ error: "Phone number must be unique" });
-    }
-});
-// List all customers
-router.get("/customers", authMiddleware_1.authenticateToken, async (req, res) => {
-    const customers = await prisma.customer.findMany();
-    res.json(customers);
-});
-// Perform a sale
-router.post("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
-    const { customerId, items, discount = 0, paidAmount, paymentType } = req.body;
-    const userId = req.userId;
-    if (!userId)
-        return res.status(401).json({ error: "User not authenticated" });
-    //console.log("User ID from token:", userId);
-    if (!items || items.length === 0)
-        return res.status(400).json({ error: "Items are required" });
-    let totalAmount = 0;
-    const saleItemsData = [];
-    for (const item of items) {
-        const inventory = await prisma.inventoryItem.findUnique({
-            where: { id: item.itemId },
-        });
-        if (!inventory || inventory.quantity < item.quantity) {
-            return res
-                .status(400)
-                .json({ error: `Insufficient stock for item ${item.itemId}` });
-        }
-        totalAmount += item.quantity * item.price;
-        saleItemsData.push({
-            itemId: item.itemId,
-            quantity: item.quantity,
-            price: item.price,
-        });
-    }
-    const netAmount = totalAmount - discount;
-    const sale = await prisma.sale.create({
-        data: {
-            customerId,
-            userId,
-            totalAmount: netAmount,
-            discount,
-            paidAmount,
-            paymentType,
-            items: { create: saleItemsData },
-        },
-        include: {
-            customer: true,
-            user: true,
-        },
-    });
-    for (const item of items) {
-        await prisma.inventoryItem.update({
-            where: { id: item.itemId },
-            data: { quantity: { decrement: item.quantity } },
-        });
-        await prisma.inventoryTransaction.create({
-            data: {
-                itemId: item.itemId,
-                type: "STOCK_OUT",
-                quantity: item.quantity,
-            },
-        });
-    }
-    const balance = paidAmount - netAmount;
-    await prisma.customerTransaction.create({
-        data: {
-            customerId,
-            amount: balance,
-            reason: "Sale",
-        },
-    });
-    res.status(201).json({ sale });
-});
-// Record a payment for a customer
-router.post("/customers/:id/payments", authMiddleware_1.authenticateToken, async (req, res) => {
-    const customerId = parseInt(req.params.id);
-    const { amount, paymentType } = req.body;
-    if (!amount || isNaN(amount)) {
-        return res.status(400).json({ error: "Valid amount is required" });
-    }
-    try {
-        // Get all sales for the customer, ordered oldest first
-        const allSales = await prisma.sale.findMany({
-            where: { customerId },
-            orderBy: { createdAt: "asc" },
-        });
-        // Filter sales that are not fully paid
-        const unpaidSales = allSales.filter((sale) => sale.totalAmount > sale.paidAmount);
-        let remainingPayment = amount;
-        for (const sale of unpaidSales) {
-            const saleDue = sale.totalAmount - sale.paidAmount;
-            if (saleDue <= 0)
-                continue;
-            const paymentToApply = Math.min(saleDue, remainingPayment);
-            // Update the sale with the partial or full payment
-            await prisma.sale.update({
-                where: { id: sale.id },
-                data: {
-                    paidAmount: {
-                        increment: paymentToApply,
-                    },
-                },
-            });
-            // Record a transaction for this payment
-            await prisma.customerTransaction.create({
-                data: {
-                    customerId,
-                    amount: paymentToApply,
-                    reason: `Payment of ${paymentToApply} applied to Sale #${sale.id} via ${paymentType}`,
-                },
-            });
-            remainingPayment -= paymentToApply;
-            if (remainingPayment <= 0)
-                break;
-        }
-        // If there's leftover payment, treat it as advance/credit
-        if (remainingPayment > 0) {
-            await prisma.customerTransaction.create({
-                data: {
-                    customerId,
-                    amount: remainingPayment,
-                    reason: `Advance payment via ${paymentType}`,
-                },
-            });
-        }
-        return res
-            .status(201)
-            .json({ message: "Payment recorded and applied to outstanding sales" });
-    }
-    catch (error) {
-        console.error("Error recording payment:", error);
-        return res.status(500).json({ error: "Internal server error" });
-    }
-});
-// View customer balance and transactions
-router.get("/customers/:id/transactions", authMiddleware_1.authenticateToken, async (req, res) => {
-    const customerId = parseInt(req.params.id);
-    const transactions = await prisma.customerTransaction.findMany({
-        where: { customerId },
-        orderBy: { createdAt: "desc" },
-    });
-    const balance = transactions.reduce((sum, tx) => sum + tx.amount, 0);
-    const status = balance === 0 ? "Settled" : balance > 0 ? "Credit" : "Due";
-    res.json({ balance, status, transactions });
-});
-// Receipt generator
-router.get("/sales/:id/receipt", authMiddleware_1.authenticateToken, async (req, res) => {
-    const saleId = parseInt(req.params.id);
-    const format = req.query.format || "json";
-    const sale = await prisma.sale.findUnique({
-        where: { id: saleId },
-        include: {
-            customer: true,
-            user: true,
-            items: { include: { item: true } },
-        },
-    });
-    if (!sale)
-        return res.status(404).json({ error: "Sale not found" });
-    if (format === "pdf") {
-        const doc = new pdfkit_1.default();
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", 'inline; filename="receipt.pdf"');
-        doc.pipe(res);
-        doc.fontSize(18).text("Receipt", { align: "center" });
-        doc.text(`Customer: ${sale.customer.name} (${sale.customer.phone})`);
-        doc.text(`Date: ${sale.createdAt}`);
-        doc.moveDown();
-        sale.items.forEach((item) => {
-            doc.text(`${item.item.name} x${item.quantity} @ ${item.price} = ${item.price * item.quantity}`);
-        });
-        doc.moveDown();
-        doc.text(`Discount: ${sale.discount}`);
-        doc.text(`Total: ${sale.totalAmount}`);
-        doc.text(`Paid: ${sale.paidAmount}`);
-        doc.end();
-    }
-    else {
-        res.json(sale);
-    }
-});
-// Sales summary by date
-router.get("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
-    let { start, end } = req.query;
-    if (!start || isNaN(Date.parse(start)))
-        start = (0, date_fns_1.subDays)(new Date(), 7).toISOString();
-    if (!end || isNaN(Date.parse(end)))
-        end = new Date().toISOString();
-    try {
-        const sales = await prisma.sale.findMany({
-            where: {
-                createdAt: {
-                    gte: new Date(start),
-                    lte: new Date(end),
-                },
-            },
-            include: {
-                customer: true,
-                items: {
-                    include: {
-                        item: true, // This includes the item name in the response
-                    },
-                },
-                user: {
-                    select: {
-                        id: true,
-                        name: true,
-                    },
-                },
-            },
-            orderBy: {
-                createdAt: "desc",
-            },
-        });
-        res.json(sales);
-    }
-    catch (error) {
-        console.error("Failed to fetch sales:", error);
-        res.status(500).json({ error: "Server error fetching sales" });
-    }
-});
-// Filter sales by customer/date
-router.get("/sales/filter", authMiddleware_1.authenticateToken, async (req, res) => {
-    const { customerId, start, end } = req.query;
-    const sales = await prisma.sale.findMany({
-        where: {
-            customerId: parseInt(customerId),
-            createdAt: {
-                gte: new Date(start),
-                lte: new Date(end),
-            },
-        },
-        include: { items: true, customer: true },
-        orderBy: { createdAt: "desc" },
-    });
-    res.json(sales);
-});
-// Daily/weekly sales report
-router.get("/sales/report", authMiddleware_1.authenticateToken, async (req, res) => {
-    const { range } = req.query;
-    const now = new Date();
-    const start = range === "weekly" ? (0, date_fns_1.startOfWeek)(now) : (0, date_fns_1.startOfDay)(now);
-    const end = range === "weekly" ? (0, date_fns_1.endOfWeek)(now) : (0, date_fns_1.endOfDay)(now);
-    // Fetch sales within range
-    const sales = await prisma.sale.findMany({
-        where: {
-            createdAt: {
-                gte: start,
-                lte: end,
-            },
-        },
-        include: {
-            items: {
-                include: {
-                    item: true, // fetch item details
-                },
-            },
-        },
-    });
-    const totalSales = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
-    const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
-    const totalDiscount = sales.reduce((sum, sale) => sum + sale.discount, 0);
-    const itemSalesCount = {};
-    for (const sale of sales) {
-        for (const saleItem of sale.items) {
-            const id = saleItem.itemId;
-            const name = saleItem.item.name;
-            if (!itemSalesCount[id]) {
-                itemSalesCount[id] = { name, quantity: 0 };
-            }
-            itemSalesCount[id].quantity += saleItem.quantity;
-        }
-    }
-    const sortedItems = Object.entries(itemSalesCount)
-        .sort((a, b) => b[1].quantity - a[1].quantity)
-        .map(([id, data]) => ({ id, ...data }));
-    const mostSoldItem = sortedItems[0] || null;
-    const leastSoldItem = sortedItems[sortedItems.length - 1] || null;
-    return res.json({
-        range,
-        totalSales,
-        totalPaid,
-        totalDiscount,
-        numberOfSales: sales.length,
-        mostSoldItem,
-        leastSoldItem,
-    });
-});
-//Returns a list of customers with a negative balance (i.e. customers who owe money).
-router.get("/reports/outstanding-balances", authMiddleware_1.authenticateToken, async (req, res) => {
+// ✅ 1. GET /reports/outstanding-balances
+router.get("/outstanding-balances", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         const customers = await prisma.customer.findMany({
             include: {
@@ -331,8 +30,8 @@ router.get("/reports/outstanding-balances", authMiddleware_1.authenticateToken, 
         res.status(500).json({ error: "Server error" });
     }
 });
-//✅ 2. GET /reports/top-products?start=...&end=...
-router.get("/reports/top-products", authMiddleware_1.authenticateToken, async (req, res) => {
+// ✅ 2. GET /reports/top-products
+router.get("/top-products", authMiddleware_1.authenticateToken, async (req, res) => {
     const { start, end } = req.query;
     const startDate = start ? new Date(start) : (0, date_fns_1.subDays)(new Date(), 7);
     const endDate = end ? new Date(end) : new Date();
@@ -374,8 +73,8 @@ router.get("/reports/top-products", authMiddleware_1.authenticateToken, async (r
         res.status(500).json({ error: "Server error" });
     }
 });
-//✅ 3. GET /reports/inventory-usage
-router.get("/reports/inventory-usage", authMiddleware_1.authenticateToken, async (req, res) => {
+// ✅ 3. GET /reports/inventory-usage
+router.get("/inventory-usage", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         const usage = await prisma.saleItem.groupBy({
             by: ["itemId"],
@@ -402,7 +101,7 @@ router.get("/reports/inventory-usage", authMiddleware_1.authenticateToken, async
     }
 });
 // ✅ 4. GET /reports/user-performance
-router.get("/reports/user-performance", authMiddleware_1.authenticateToken, async (req, res) => {
+router.get("/user-performance", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         // Group sales by userId and sum totalAmount
         const userSales = await prisma.sale.groupBy({
@@ -438,17 +137,16 @@ router.get("/reports/user-performance", authMiddleware_1.authenticateToken, asyn
         res.status(500).json({ error: "Server error" });
     }
 });
-
 // ✅ 5. GET /reports/sales-by-period
-router.get("/reports/sales-by-period", authMiddleware_1.authenticateToken, async (req, res) => {
+router.get("/sales-by-period", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         const { period, start, end } = req.query;
         let startDate, endDate;
-        
         if (start && end) {
             startDate = new Date(start);
             endDate = new Date(end);
-        } else {
+        }
+        else {
             const now = new Date();
             switch (period) {
                 case 'day':
@@ -472,7 +170,6 @@ router.get("/reports/sales-by-period", authMiddleware_1.authenticateToken, async
                     endDate = now;
             }
         }
-
         const sales = await prisma.sale.findMany({
             where: {
                 createdAt: {
@@ -489,16 +186,22 @@ router.get("/reports/sales-by-period", authMiddleware_1.authenticateToken, async
                 },
             },
         });
-
         // Calculate summary
         const totalSales = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
         const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
         const outstandingAmount = totalSales - totalPaid;
         const numberOfSales = sales.length;
-        const netProfit = totalSales * 0.3; // Assuming 30% profit margin
-        const profitMargin = 30;
+        // Calculate actual profit based on item costs
+        let totalCost = 0;
+        sales.forEach(sale => {
+            sale.items.forEach(item => {
+                const itemCost = item.item.basePrice || item.price * 0.7;
+                totalCost += item.quantity * itemCost;
+            });
+        });
+        const netProfit = totalSales - totalCost;
+        const profitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
         const collectionRate = totalSales > 0 ? (totalPaid / totalSales) * 100 : 0;
-
         // Sales by hour
         const salesByHour = Array.from({ length: 24 }, (_, hour) => {
             const hourSales = sales.filter(sale => {
@@ -510,7 +213,6 @@ router.get("/reports/sales-by-period", authMiddleware_1.authenticateToken, async
                 sales: hourSales.reduce((sum, sale) => sum + sale.totalAmount, 0),
             };
         });
-
         // Sales by day of week
         const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
         const salesByDay = daysOfWeek.map((day, index) => {
@@ -523,46 +225,45 @@ router.get("/reports/sales-by-period", authMiddleware_1.authenticateToken, async
                 sales: daySales.reduce((sum, sale) => sum + sale.totalAmount, 0),
             };
         });
-
         // Top items
         const itemSales = {};
         sales.forEach(sale => {
             sale.items.forEach(item => {
                 if (!itemSales[item.item.name]) {
-                    itemSales[item.item.name] = { quantity: 0, revenue: 0, profit: 0 };
+                    itemSales[item.item.name] = { quantity: 0, revenue: 0, profit: 0, cost: 0 };
                 }
+                const itemCost = item.item.basePrice || item.price * 0.7;
                 itemSales[item.item.name].quantity += item.quantity;
                 itemSales[item.item.name].revenue += item.quantity * item.price;
-                itemSales[item.item.name].profit += item.quantity * item.price * 0.3;
+                itemSales[item.item.name].cost += item.quantity * itemCost;
+                itemSales[item.item.name].profit += item.quantity * (item.price - itemCost);
             });
         });
-
         const topItems = Object.entries(itemSales)
             .map(([name, data]) => ({
-                name,
-                quantity: data.quantity,
-                revenue: data.revenue,
-                profit: data.profit,
-            }))
+            name,
+            quantity: data.quantity,
+            revenue: data.revenue,
+            cost: data.cost,
+            profit: data.profit,
+        }))
             .sort((a, b) => b.revenue - a.revenue)
             .slice(0, 10);
-
         // Recent sales
         const recentSales = sales
             .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
             .slice(0, 10)
             .map(sale => ({
-                id: sale.id,
-                customer: sale.customer.name,
-                amount: sale.totalAmount,
-                paymentType: sale.paymentType,
-                date: sale.createdAt,
-                items: sale.items.map(item => ({
-                    quantity: item.quantity,
-                    name: item.item.name,
-                })),
-            }));
-
+            id: sale.id,
+            customer: sale.customer.name,
+            amount: sale.totalAmount,
+            paymentType: sale.paymentType,
+            date: sale.createdAt,
+            items: sale.items.map(item => ({
+                quantity: item.quantity,
+                name: item.item.name,
+            })),
+        }));
         res.json({
             summary: {
                 totalSales,
@@ -578,19 +279,18 @@ router.get("/reports/sales-by-period", authMiddleware_1.authenticateToken, async
             topItems,
             recentSales,
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Error fetching sales by period:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
-
 // ✅ 6. GET /reports/profit-loss
-router.get("/reports/profit-loss", authMiddleware_1.authenticateToken, async (req, res) => {
+router.get("/profit-loss", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         const { start, end } = req.query;
         let startDate = start ? new Date(start) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         let endDate = end ? new Date(end) : new Date();
-
         const sales = await prisma.sale.findMany({
             where: {
                 createdAt: {
@@ -606,21 +306,17 @@ router.get("/reports/profit-loss", authMiddleware_1.authenticateToken, async (re
                 },
             },
         });
-
         // Calculate revenue and costs
         let totalRevenue = 0;
         let totalCost = 0;
         const itemProfitability = {};
-
         sales.forEach(sale => {
             sale.items.forEach(item => {
                 const revenue = item.quantity * item.price;
-                const cost = item.quantity * (item.item.buyingPrice || item.price * 0.7); // Assume 70% of selling price if no buying price
+                const cost = item.quantity * (item.item.basePrice || item.price * 0.7); // Assume 70% of selling price if no base price
                 const profit = revenue - cost;
-
                 totalRevenue += revenue;
                 totalCost += cost;
-
                 if (!itemProfitability[item.item.name]) {
                     itemProfitability[item.item.name] = {
                         name: item.item.name,
@@ -631,22 +327,18 @@ router.get("/reports/profit-loss", authMiddleware_1.authenticateToken, async (re
                         totalProfit: 0,
                     };
                 }
-
                 itemProfitability[item.item.name].totalQuantity += item.quantity;
                 itemProfitability[item.item.name].totalRevenue += revenue;
                 itemProfitability[item.item.name].totalCost += cost;
                 itemProfitability[item.item.name].totalProfit += profit;
             });
         });
-
         // Calculate profit margins for each item
         Object.values(itemProfitability).forEach(item => {
             item.profitMargin = item.totalRevenue > 0 ? (item.totalProfit / item.totalRevenue) * 100 : 0;
         });
-
         const netProfit = totalRevenue - totalCost;
         const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
-
         res.json({
             summary: {
                 totalRevenue,
@@ -654,34 +346,31 @@ router.get("/reports/profit-loss", authMiddleware_1.authenticateToken, async (re
                 netProfit,
                 profitMargin,
             },
-            itemProfitability: Object.values(itemProfitability)
+            topPerformers: Object.values(itemProfitability)
                 .sort((a, b) => b.totalProfit - a.totalProfit)
                 .slice(0, 15),
+            leastProfitable: Object.values(itemProfitability)
+                .sort((a, b) => a.totalProfit - b.totalProfit)
+                .slice(0, 15),
+            categoryBreakdown: [], // Placeholder for future implementation
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Error fetching profit loss:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
-
 // ✅ 7. GET /reports/inventory-valuation
-router.get("/reports/inventory-valuation", authMiddleware_1.authenticateToken, async (req, res) => {
+router.get("/inventory-valuation", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany({
-            include: {
-                category: true,
-            },
-        });
-
+        const inventory = await prisma.inventoryItem.findMany();
         const totalValue = inventory.reduce((sum, item) => {
-            return sum + (item.quantity * (item.sellingPrice || 0));
+            return sum + (item.quantity * (item.sellPrice || 0));
         }, 0);
-
         const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
-
         const categoryBreakdown = {};
         inventory.forEach(item => {
-            const category = item.category?.name || 'Uncategorized';
+            const category = item.category || 'Uncategorized';
             if (!categoryBreakdown[category]) {
                 categoryBreakdown[category] = {
                     name: category,
@@ -690,9 +379,8 @@ router.get("/reports/inventory-valuation", authMiddleware_1.authenticateToken, a
                 };
             }
             categoryBreakdown[category].count += item.quantity;
-            categoryBreakdown[category].value += item.quantity * (item.sellingPrice || 0);
+            categoryBreakdown[category].value += item.quantity * (item.sellPrice || 0);
         });
-
         res.json({
             summary: {
                 totalValue,
@@ -703,73 +391,66 @@ router.get("/reports/inventory-valuation", authMiddleware_1.authenticateToken, a
             items: inventory.map(item => ({
                 id: item.id,
                 name: item.name,
-                category: item.category?.name || 'Uncategorized',
+                category: item.category || 'Uncategorized',
                 quantity: item.quantity,
                 unit: item.unit,
-                currentValue: item.quantity * (item.sellingPrice || 0),
-                sellingPrice: item.sellingPrice,
+                currentValue: item.quantity * (item.sellPrice || 0),
+                sellingPrice: item.sellPrice,
             })),
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Error fetching inventory valuation:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
-
 // ✅ 8. GET /reports/enhanced-inventory
-router.get("/reports/enhanced-inventory", authMiddleware_1.authenticateToken, async (req, res) => {
+router.get("/enhanced-inventory", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany({
-            include: {
-                category: true,
-            },
-        });
-
+        const inventory = await prisma.inventoryItem.findMany();
         const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
         const totalValue = inventory.reduce((sum, item) => {
-            return sum + (item.quantity * (item.sellingPrice || 0));
+            return sum + (item.quantity * (item.sellPrice || 0));
         }, 0);
-
         // Stock health analysis
         const stockHealthBreakdown = {
             healthy: 0,
-            low_stock: 0,
-            out_of_stock: 0,
+            lowStock: 0,
+            outOfStock: 0,
             overstocked: 0,
         };
-
         const itemsNeedingReorder = 0;
-
         const items = inventory.map(item => {
             let stockHealth = 'healthy';
             if (item.quantity === 0) {
-                stockHealth = 'out_of_stock';
-                stockHealthBreakdown.out_of_stock++;
-            } else if (item.quantity <= (item.minStock || 5)) {
-                stockHealth = 'low_stock';
-                stockHealthBreakdown.low_stock++;
-            } else if (item.quantity > (item.maxStock || item.quantity * 2)) {
+                stockHealth = 'outOfStock';
+                stockHealthBreakdown.outOfStock++;
+            }
+            else if (item.quantity <= (item.lowStockLimit || 5)) {
+                stockHealth = 'lowStock';
+                stockHealthBreakdown.lowStock++;
+            }
+            else if (item.quantity > (item.lowStockLimit * 2 || item.quantity * 2)) {
                 stockHealth = 'overstocked';
                 stockHealthBreakdown.overstocked++;
-            } else {
+            }
+            else {
                 stockHealthBreakdown.healthy++;
             }
-
             return {
                 id: item.id,
                 name: item.name,
-                category: item.category?.name || 'Uncategorized',
+                category: item.category || 'Uncategorized',
                 currentStock: item.quantity,
                 unit: item.unit,
-                minStock: item.minStock || 5,
-                maxStock: item.maxStock || item.quantity * 2,
-                currentValue: item.quantity * (item.sellingPrice || 0),
-                sellingPrice: item.sellingPrice,
+                minStock: item.lowStockLimit || 5,
+                maxStock: item.lowStockLimit * 2 || item.quantity * 2,
+                currentValue: item.quantity * (item.sellPrice || 0),
+                sellingPrice: item.sellPrice,
                 stockHealth,
                 velocityChange: 0, // Placeholder for future implementation
             };
         });
-
         res.json({
             summary: {
                 totalItems,
@@ -779,19 +460,18 @@ router.get("/reports/enhanced-inventory", authMiddleware_1.authenticateToken, as
             },
             items,
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Error fetching enhanced inventory:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
-
 // ✅ 9. GET /reports/customer-analysis
-router.get("/reports/customer-analysis", authMiddleware_1.authenticateToken, async (req, res) => {
+router.get("/customer-analysis", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         const { start, end } = req.query;
         let startDate = start ? new Date(start) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         let endDate = end ? new Date(end) : new Date();
-
         const customers = await prisma.customer.findMany({
             include: {
                 sales: {
@@ -805,76 +485,70 @@ router.get("/reports/customer-analysis", authMiddleware_1.authenticateToken, asy
                 transactions: true,
             },
         });
-
         const topCustomers = customers
             .map(customer => {
-                const total = customer.sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
-                const orders = customer.sales.length;
-                return {
-                    name: customer.name,
-                    orders,
-                    total,
-                    average: orders > 0 ? total / orders : 0,
-                };
-            })
+            const total = customer.sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+            const orders = customer.sales.length;
+            return {
+                name: customer.name,
+                orders,
+                total,
+                average: orders > 0 ? total / orders : 0,
+            };
+        })
             .filter(customer => customer.total > 0)
             .sort((a, b) => b.total - a.total)
             .slice(0, 15);
-
         res.json({
-            topCustomers,
+            customers: topCustomers.map(customer => ({
+                name: customer.name,
+                numberOfOrders: customer.orders,
+                totalSpent: customer.total,
+                averageOrderValue: customer.average,
+            })),
             totalCustomers: customers.length,
             activeCustomers: customers.filter(c => c.sales.length > 0).length,
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Error fetching customer analysis:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
-
 // ✅ 10. GET /reports/loss-analysis
-router.get("/reports/loss-analysis", authMiddleware_1.authenticateToken, async (req, res) => {
+router.get("/loss-analysis", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany({
-            include: {
-                category: true,
-            },
-        });
-
+        const inventory = await prisma.inventoryItem.findMany();
         const highRiskItems = inventory.filter(item => {
-            return item.quantity <= (item.minStock || 5) || 
-                   item.quantity === 0 ||
-                   (item.expiryDate && new Date(item.expiryDate) < new Date());
+            return item.quantity <= (item.lowStockLimit || 5) ||
+                item.quantity === 0 ||
+                (item.expiryDate && new Date(item.expiryDate) < new Date());
         });
-
         const wasteRiskItems = inventory.filter(item => {
             return item.expiryDate && new Date(item.expiryDate) < new Date();
         });
-
         const expiryRiskItems = inventory.filter(item => {
-            if (!item.expiryDate) return false;
+            if (!item.expiryDate)
+                return false;
             const daysUntilExpiry = Math.ceil((new Date(item.expiryDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
             return daysUntilExpiry <= 7 && daysUntilExpiry > 0;
         });
-
         const totalPotentialLoss = highRiskItems.reduce((sum, item) => {
-            return sum + (item.quantity * (item.sellingPrice || 0));
+            return sum + (item.quantity * (item.sellPrice || 0));
         }, 0);
-
         const items = highRiskItems.map(item => ({
             id: item.id,
             name: item.name,
-            category: item.category?.name || 'Uncategorized',
+            category: item.category || 'Uncategorized',
             currentStock: item.quantity,
             unit: item.unit,
-            potentialLoss: item.quantity * (item.sellingPrice || 0),
-            riskType: item.quantity === 0 ? 'out_of_stock' : 
-                     item.quantity <= (item.minStock || 5) ? 'low_stock' : 'expiry',
-            recommendations: item.quantity === 0 ? ['Restock immediately'] : 
-                           item.quantity <= (item.minStock || 5) ? ['Monitor closely', 'Consider restocking'] : 
-                           ['Check expiry date'],
+            potentialLoss: item.quantity * (item.sellPrice || 0),
+            riskType: item.quantity === 0 ? 'outOfStock' :
+                item.quantity <= (item.lowStockLimit || 5) ? 'lowStock' : 'expiry',
+            recommendations: item.quantity === 0 ? ['Restock immediately'] :
+                item.quantity <= (item.lowStockLimit || 5) ? ['Monitor closely', 'Consider restocking'] :
+                    ['Check expiry date'],
         }));
-
         res.json({
             summary: {
                 highRiskItems: highRiskItems.length,
@@ -884,19 +558,18 @@ router.get("/reports/loss-analysis", authMiddleware_1.authenticateToken, async (
             },
             items,
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Error fetching loss analysis:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
-
 // ✅ 11. GET /reports/cash-flow
-router.get("/reports/cash-flow", authMiddleware_1.authenticateToken, async (req, res) => {
+router.get("/cash-flow", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         const { start, end } = req.query;
         let startDate = start ? new Date(start) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         let endDate = end ? new Date(end) : new Date();
-
         const sales = await prisma.sale.findMany({
             where: {
                 createdAt: {
@@ -905,34 +578,27 @@ router.get("/reports/cash-flow", authMiddleware_1.authenticateToken, async (req,
                 },
             },
         });
-
         const totalCollected = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
         const totalOutstanding = sales.reduce((sum, sale) => sum + (sale.totalAmount - sale.paidAmount), 0);
         const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
         const collectionRate = totalRevenue > 0 ? (totalCollected / totalRevenue) * 100 : 0;
-
         // Daily cash flow
         const dailyCashFlow = [];
         const currentDate = new Date(startDate);
-        
         while (currentDate <= endDate) {
             const daySales = sales.filter(sale => {
                 const saleDate = new Date(sale.createdAt);
                 return saleDate.toDateString() === currentDate.toDateString();
             });
-
             const dayRevenue = daySales.reduce((sum, sale) => sum + sale.totalAmount, 0);
             const dayCollected = daySales.reduce((sum, sale) => sum + sale.paidAmount, 0);
-
             dailyCashFlow.push({
                 date: currentDate.toISOString().split('T')[0],
                 revenue: dayRevenue,
                 collected: dayCollected,
             });
-
             currentDate.setDate(currentDate.getDate() + 1);
         }
-
         res.json({
             summary: {
                 totalCollected,
@@ -942,10 +608,10 @@ router.get("/reports/cash-flow", authMiddleware_1.authenticateToken, async (req,
             },
             dailyCashFlow,
         });
-    } catch (error) {
+    }
+    catch (error) {
         console.error("Error fetching cash flow:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
-
 exports.default = router;

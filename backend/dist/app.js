@@ -11,8 +11,11 @@ const auth_1 = __importDefault(require("./routes/auth"));
 const profile_1 = __importDefault(require("./routes/profile"));
 const inventory_1 = __importDefault(require("./routes/inventory"));
 const sales_1 = __importDefault(require("./routes/sales"));
+const reports_1 = __importDefault(require("./routes/reports"));
 const app = (0, express_1.default)();
-const allowedOrigin = 'http://13.49.240.213';
+const allowedOrigin = [
+    'http://localhost:8080',
+];
 const corsOptions = {
     origin: allowedOrigin,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -29,4 +32,5 @@ app.use('/auth', auth_1.default);
 app.use('/profile', profile_1.default);
 app.use('/inventory', inventory_1.default);
 app.use('/sales', sales_1.default);
+app.use('/sales/reports', reports_1.default);
 exports.default = app;

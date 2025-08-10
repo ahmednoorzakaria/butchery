@@ -6,7 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import InventoryList from "./pages/InventoryList";
-import Report from "./pages/Report";
+import Reports from "./pages/Reports";
 import SalesList from "./pages/SalesList";
 import CustomersList from "./pages/CustomersList";
 import NotFound from "./pages/NotFound";
@@ -15,7 +15,21 @@ import ProtectedRoute from "./components/ProtectedRoute.tsx";
 import Account from "./pages/Account";
 import UnauthorizedRedirect from "./pages/UnauthorizedRedirect";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      gcTime: 10 * 60 * 1000, // 10 minutes
+      retry: 2,
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: false,
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -78,7 +92,7 @@ const App = () => (
             path="/reports"
             element={
               <ProtectedRoute allowedRoles={["ADMIN"]}>
-                <Report />
+                <Reports />
               </ProtectedRoute>
             }
           />

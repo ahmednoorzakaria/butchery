@@ -16,23 +16,32 @@ router.get("/", authMiddleware_1.authenticateToken, async (req, res) => {
 });
 // Add new item
 router.post("/", authMiddleware_1.authenticateToken, async (req, res) => {
-    const { name, category, subtype, quantity, unit, price } = req.body;
-    if (!name || !category || !quantity || !unit || !price) {
+    const { name, category, subtype, quantity, unit, basePrice, sellPrice, limitPrice } = req.body;
+    if (!name || !category || !quantity || !unit || basePrice == null || sellPrice == null || limitPrice == null) {
         return res.status(400).json({ error: "Missing required fields" });
     }
     const newItem = await prisma.inventoryItem.create({
-        data: { name, category, subtype, quantity, unit, price },
+        data: { name, category, subtype, quantity, unit, basePrice, sellPrice, limitPrice },
     });
     res.status(201).json(newItem);
 });
 // Update quantity or details
 router.put("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
     const { id } = req.params;
-    const data = req.body;
+    const { name, category, subtype, quantity, unit, basePrice, sellPrice, limitPrice } = req.body;
     try {
         const updated = await prisma.inventoryItem.update({
             where: { id: parseInt(id) },
-            data,
+            data: {
+                ...(name && { name }),
+                ...(category && { category }),
+                ...(subtype !== undefined && { subtype }),
+                ...(quantity !== undefined && { quantity }),
+                ...(unit && { unit }),
+                ...(basePrice !== undefined && { basePrice }),
+                ...(sellPrice !== undefined && { sellPrice }),
+                ...(limitPrice !== undefined && { limitPrice }),
+            },
         });
         res.json(updated);
     }
@@ -102,7 +111,6 @@ router.post("/inventory/:id/increase", authMiddleware_1.authenticateToken, async
         return res.status(400).json({ error: "Quantity must be greater than zero" });
     }
     try {
-        // Update stock
         const item = await prisma.inventoryItem.update({
             where: { id: itemId },
             data: {
@@ -111,7 +119,6 @@ router.post("/inventory/:id/increase", authMiddleware_1.authenticateToken, async
                 },
             },
         });
-        // Record transaction
         await prisma.inventoryTransaction.create({
             data: {
                 itemId,

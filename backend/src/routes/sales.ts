@@ -11,7 +11,8 @@ import {
   endOfMonth,
   startOfYear,
   endOfYear,
-  subDays 
+  subDays,
+  format
 } from "date-fns";
 
 
@@ -44,6 +45,13 @@ router.post("/sales", authenticateToken, async (req, res) => {
   if (!items || items.length === 0)
     return res.status(400).json({ error: "Items are required" });
 
+  // Validate payment type - only CASH or MPESA allowed
+  if (!paymentType || !['CASH', 'MPESA'].includes(paymentType)) {
+    return res.status(400).json({ 
+      error: "Payment type must be either 'CASH' or 'MPESA'" 
+    });
+  }
+
   let totalAmount = 0;
   const saleItemsData = [];
 
@@ -56,6 +64,21 @@ router.post("/sales", authenticateToken, async (req, res) => {
         .status(400)
         .json({ error: `Insufficient stock for item ${item.itemId}` });
     }
+    
+    // Validate sale price against limit price
+    if (inventory.limitPrice && item.price < inventory.limitPrice) {
+      return res
+        .status(400)
+        .json({ 
+          error: `Sale price (${item.price}) for item "${inventory.name}" cannot be lower than the limit price (${inventory.limitPrice})` 
+        });
+    }
+    
+    // Warn if sale price is significantly lower than default sell price
+    if (inventory.sellPrice && item.price < inventory.sellPrice * 0.8) {
+      console.warn(`Warning: Sale price ${item.price} for item ${inventory.name} is significantly lower than default sell price ${inventory.sellPrice}`);
+    }
+    
     totalAmount += item.quantity * item.price;
     saleItemsData.push({
       itemId: item.itemId,
@@ -99,6 +122,7 @@ router.post("/sales", authenticateToken, async (req, res) => {
       customerId,
       amount: balance,
       reason: "Sale",
+      saleId: sale.id,
     },
   });
 
@@ -164,6 +188,17 @@ router.get("/customers/:id/transactions", authenticateToken, async (req, res) =>
   const customerId = parseInt(req.params.id);
   const transactions = await prisma.customerTransaction.findMany({
     where: { customerId },
+    include: {
+      sale: {
+        include: {
+          items: {
+            include: {
+              item: true
+            }
+          }
+        }
+      }
+    },
     orderBy: { createdAt: "desc" },
   });
   const balance = transactions.reduce((sum, tx) => sum + tx.amount, 0);
@@ -242,7 +277,11 @@ router.get("/sales/filter", authenticateToken, async (req, res) => {
         lte: new Date(end as string),
       },
     },
-    include: { items: true, customer: true },
+    include: { 
+      items: { include: { item: true } }, 
+      customer: true,
+      user: { select: { id: true, name: true } }
+    },
     orderBy: { createdAt: "desc" },
   });
   res.json(sales);
@@ -411,6 +450,969 @@ router.get("/reports/user-performance", authenticateToken, async (req, res) => {
     res.json(results);
   } catch (error) {
     console.error("User performance error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ NEW: Comprehensive Sales Report by Date Range
+router.get("/reports/sales-by-date", authenticateToken, async (req, res) => {
+  const { start, end, groupBy = "day" } = req.query;
+  const startDate = start ? new Date(start as string) : subDays(new Date(), 30);
+  const endDate = end ? new Date(end as string) : new Date();
+
+  try {
+    const sales = await prisma.sale.findMany({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      include: {
+        items: { include: { item: true } },
+        customer: true,
+        user: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    // Group sales by the specified time period
+    const groupedSales: Record<string, any> = {};
+    
+    sales.forEach((sale) => {
+      let key: string;
+      const date = new Date(sale.createdAt);
+      
+      switch (groupBy) {
+        case "day":
+          key = format(date, "yyyy-MM-dd");
+          break;
+        case "week":
+          key = format(date, "yyyy-'W'ww");
+          break;
+        case "month":
+          key = format(date, "yyyy-MM");
+          break;
+        case "year":
+          key = format(date, "yyyy");
+          break;
+        default:
+          key = format(date, "yyyy-MM-dd");
+      }
+
+      if (!groupedSales[key]) {
+        groupedSales[key] = {
+          period: key,
+          totalSales: 0,
+          totalPaid: 0,
+          totalDiscount: 0,
+          numberOfSales: 0,
+          items: {},
+          customers: new Set(),
+          paymentMethods: {},
+        };
+      }
+
+      groupedSales[key].totalSales += sale.totalAmount;
+      groupedSales[key].totalPaid += sale.paidAmount;
+      groupedSales[key].totalDiscount += sale.discount;
+      groupedSales[key].numberOfSales += 1;
+      groupedSales[key].customers.add(sale.customer.name);
+      
+      // Count payment methods
+      const paymentType = sale.paymentType;
+      groupedSales[key].paymentMethods[paymentType] = (groupedSales[key].paymentMethods[paymentType] || 0) + 1;
+
+      // Aggregate items sold
+      sale.items.forEach((item) => {
+        const itemKey = item.item.name;
+        if (!groupedSales[key].items[itemKey]) {
+          groupedSales[key].items[itemKey] = {
+            name: item.item.name,
+            quantity: 0,
+            revenue: 0,
+            unit: item.item.unit,
+          };
+        }
+        groupedSales[key].items[itemKey].quantity += item.quantity;
+        groupedSales[key].items[itemKey].revenue += item.quantity * item.price;
+      });
+    });
+
+    // Convert to array and format
+    const result = Object.values(groupedSales).map((group) => ({
+      ...group,
+      customers: Array.from(group.customers),
+      uniqueCustomers: group.customers.size,
+      outstandingAmount: group.totalSales - group.totalPaid,
+      averageSaleValue: group.numberOfSales > 0 ? group.totalSales / group.numberOfSales : 0,
+      items: Object.values(group.items),
+    }));
+
+    res.json(result);
+  } catch (error) {
+    console.error("Sales by date error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ NEW: Profit & Loss Report
+router.get("/reports/profit-loss", authenticateToken, async (req, res) => {
+  const { start, end } = req.query;
+  const startDate = start ? new Date(start as string) : subDays(new Date(), 30);
+  const endDate = end ? new Date(end as string) : new Date();
+
+  try {
+    const sales = await prisma.sale.findMany({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      include: {
+        items: { 
+          include: { 
+            item: true 
+          } 
+        },
+      },
+    });
+
+    let totalRevenue = 0;
+    let totalCost = 0;
+    let totalProfit = 0;
+    let totalDiscount = 0;
+    const itemProfitability: Record<string, any> = {};
+
+    sales.forEach((sale) => {
+      totalRevenue += sale.totalAmount;
+      totalDiscount += sale.discount;
+
+      sale.items.forEach((saleItem) => {
+        const item = saleItem.item;
+        const itemKey = item.name;
+        
+        if (!itemProfitability[itemKey]) {
+          itemProfitability[itemKey] = {
+            name: item.name,
+            category: item.category,
+            totalQuantity: 0,
+            totalRevenue: 0,
+            totalCost: 0,
+            totalProfit: 0,
+            averagePrice: 0,
+            averageCost: 0,
+            profitMargin: 0,
+          };
+        }
+
+        const revenue = saleItem.quantity * saleItem.price;
+        const cost = saleItem.quantity * (item.basePrice || 0);
+        const profit = revenue - cost;
+
+        itemProfitability[itemKey].totalQuantity += saleItem.quantity;
+        itemProfitability[itemKey].totalRevenue += revenue;
+        itemProfitability[itemKey].totalCost += cost;
+        itemProfitability[itemKey].totalProfit += profit;
+      });
+    });
+
+    // Calculate totals and averages for each item
+    Object.values(itemProfitability).forEach((item: any) => {
+      item.averagePrice = item.totalQuantity > 0 ? item.totalRevenue / item.totalQuantity : 0;
+      item.averageCost = item.totalQuantity > 0 ? item.totalCost / item.totalQuantity : 0;
+      item.profitMargin = item.totalRevenue > 0 ? (item.totalProfit / item.totalRevenue) * 100 : 0;
+      
+      totalCost += item.totalCost;
+      totalProfit += item.totalProfit;
+    });
+
+    // Sort items by profitability
+    const sortedItems = Object.values(itemProfitability).sort((a: any, b: any) => b.totalProfit - a.totalProfit);
+
+    const result = {
+      period: { start: startDate, end: endDate },
+      summary: {
+        totalRevenue,
+        totalCost,
+        totalProfit,
+        totalDiscount,
+        netProfit: totalProfit - totalDiscount,
+        profitMargin: totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0,
+        numberOfSales: sales.length,
+      },
+      topPerformers: sortedItems.slice(0, 10),
+      leastProfitable: sortedItems.slice(-10).reverse(),
+      categoryBreakdown: (() => {
+        const categories: Record<string, any> = {};
+        sortedItems.forEach((item: any) => {
+          if (!categories[item.category]) {
+            categories[item.category] = {
+              name: item.category,
+              totalRevenue: 0,
+              totalCost: 0,
+              totalProfit: 0,
+              itemCount: 0,
+            };
+          }
+          categories[item.category].totalRevenue += item.totalRevenue;
+          categories[item.category].totalCost += item.totalCost;
+          categories[item.category].totalProfit += item.totalProfit;
+          categories[item.category].itemCount += 1;
+        });
+        return Object.values(categories).sort((a: any, b: any) => b.totalProfit - a.totalProfit);
+      })(),
+    };
+
+    res.json(result);
+  } catch (error) {
+    console.error("Profit & Loss error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ NEW: Inventory Valuation Report
+router.get("/reports/inventory-valuation", authenticateToken, async (req, res) => {
+  try {
+    const inventory = await prisma.inventoryItem.findMany({
+      include: {
+        saleItems: {
+          include: {
+            sale: true,
+          },
+        },
+      },
+    });
+
+    const result = inventory.map((item) => {
+      // Calculate current value
+      const currentValue = item.quantity * (item.basePrice || 0);
+      const potentialValue = item.quantity * (item.sellPrice || 0);
+      
+      // Calculate sales velocity (items sold per day in last 30 days)
+      const thirtyDaysAgo = subDays(new Date(), 30);
+      const recentSales = item.saleItems.filter((saleItem) => 
+        saleItem.sale.createdAt >= thirtyDaysAgo
+      );
+      const quantitySold = recentSales.reduce((sum, si) => sum + si.quantity, 0);
+      const salesVelocity = quantitySold / 30; // per day
+      
+      // Calculate days until stockout
+      const daysUntilStockout = salesVelocity > 0 ? item.quantity / salesVelocity : null;
+      
+      // Calculate turnover rate
+      const totalSold = item.saleItems.reduce((sum, si) => sum + si.quantity, 0);
+      const turnoverRate = item.quantity > 0 ? totalSold / item.quantity : 0;
+
+      return {
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        subtype: item.subtype,
+        currentStock: item.quantity,
+        unit: item.unit,
+        basePrice: item.basePrice,
+        sellPrice: item.sellPrice,
+        limitPrice: item.limitPrice,
+        currentValue,
+        potentialValue,
+        profitPotential: potentialValue - currentValue,
+        profitMargin: item.basePrice && item.sellPrice ? 
+          ((item.sellPrice - item.basePrice) / item.sellPrice) * 100 : 0,
+        lowStockAlert: item.quantity <= item.lowStockLimit,
+        salesVelocity,
+        daysUntilStockout,
+        turnoverRate,
+        totalSold,
+        lastUpdated: item.updatedAt,
+      };
+    });
+
+    // Calculate summary statistics
+    const summary = {
+      totalItems: result.length,
+      totalValue: result.reduce((sum, item) => sum + item.currentValue, 0),
+      totalPotentialValue: result.reduce((sum, item) => sum + item.potentialValue, 0),
+      totalProfitPotential: result.reduce((sum, item) => sum + item.profitPotential, 0),
+      lowStockItems: result.filter(item => item.lowStockAlert).length,
+      outOfStockItems: result.filter(item => item.currentStock === 0).length,
+      highValueItems: result.filter(item => item.currentValue > 10000).length, // Items worth more than 10K
+    };
+
+    res.json({ summary, items: result });
+  } catch (error) {
+    console.error("Inventory valuation error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ NEW: Customer Analysis Report
+router.get("/reports/customer-analysis", authenticateToken, async (req, res) => {
+  const { start, end } = req.query;
+  const startDate = start ? new Date(start as string) : subDays(new Date(), 90);
+  const endDate = end ? new Date(end as string) : new Date();
+
+  try {
+    const customers = await prisma.customer.findMany({
+      include: {
+        sales: {
+          where: {
+            createdAt: { gte: startDate, lte: endDate },
+          },
+          include: {
+            items: true,
+          },
+        },
+        transactions: true,
+      },
+    });
+
+    const customerAnalysis = customers.map((customer) => {
+      const totalSpent = customer.sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+      const totalPaid = customer.sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
+      const totalDiscount = customer.sales.reduce((sum, sale) => sum + sale.discount, 0);
+      const outstandingBalance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      
+      // Calculate average order value
+      const averageOrderValue = customer.sales.length > 0 ? totalSpent / customer.sales.length : 0;
+      
+      // Calculate customer lifetime value (all time)
+      const lifetimeValue = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      
+      // Determine customer segment
+      let segment = "Bronze";
+      if (totalSpent >= 50000) segment = "Gold";
+      else if (totalSpent >= 20000) segment = "Silver";
+      else if (totalSpent >= 5000) segment = "Bronze";
+      else segment = "New";
+
+      return {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        totalSpent,
+        totalPaid,
+        totalDiscount,
+        outstandingBalance,
+        averageOrderValue,
+        lifetimeValue,
+        numberOfOrders: customer.sales.length,
+        lastOrderDate: customer.sales.length > 0 ? 
+          Math.max(...customer.sales.map(s => s.createdAt.getTime())) : null,
+        segment,
+        paymentHistory: customer.transactions.length,
+        isActive: customer.sales.length > 0,
+      };
+    });
+
+    // Sort by total spent
+    customerAnalysis.sort((a, b) => b.totalSpent - a.totalSpent);
+
+    // Calculate summary statistics
+    const summary = {
+      totalCustomers: customerAnalysis.length,
+      activeCustomers: customerAnalysis.filter(c => c.isActive).length,
+      totalRevenue: customerAnalysis.reduce((sum, c) => sum + c.totalSpent, 0),
+      totalOutstanding: customerAnalysis.reduce((sum, c) => sum + Math.abs(c.outstandingBalance), 0),
+      averageCustomerValue: customerAnalysis.length > 0 ? 
+        customerAnalysis.reduce((sum, c) => sum + c.totalSpent, 0) / customerAnalysis.length : 0,
+      segmentBreakdown: {
+        Gold: customerAnalysis.filter(c => c.segment === "Gold").length,
+        Silver: customerAnalysis.filter(c => c.segment === "Silver").length,
+        Bronze: customerAnalysis.filter(c => c.segment === "Bronze").length,
+        New: customerAnalysis.filter(c => c.segment === "New").length,
+      },
+    };
+
+    res.json({ summary, customers: customerAnalysis });
+  } catch (error) {
+    console.error("Customer analysis error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ NEW: Enhanced Sales Report with Custom Date Range
+router.get("/reports/enhanced-sales", authenticateToken, async (req, res) => {
+  const { start, end, groupBy = "day" } = req.query;
+  const startDate = start ? new Date(start as string) : subDays(new Date(), 7);
+  const endDate = end ? new Date(end as string) : new Date();
+
+  try {
+    const sales = await prisma.sale.findMany({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      include: {
+        items: { 
+          include: { 
+            item: true 
+          } 
+        },
+        customer: true,
+        user: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Calculate comprehensive metrics
+    const totalSales = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+    const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
+    const totalDiscount = sales.reduce((sum, sale) => sum + sale.discount, 0);
+    const totalCost = sales.reduce((sum, sale) => {
+      return sum + sale.items.reduce((itemSum, item) => {
+        return itemSum + (item.quantity * (item.item.basePrice || 0));
+      }, 0);
+    }, 0);
+
+    // Payment method breakdown
+    const paymentMethods: Record<string, { count: number; total: number }> = {};
+    sales.forEach((sale) => {
+      const method = sale.paymentType;
+      if (!paymentMethods[method]) {
+        paymentMethods[method] = { count: 0, total: 0 };
+      }
+      paymentMethods[method].count += 1;
+      paymentMethods[method].total += sale.totalAmount;
+    });
+
+    // Top selling items
+    const itemSales: Record<string, { name: string; quantity: number; revenue: number; cost: number }> = {};
+    sales.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const itemKey = item.item.name;
+        if (!itemSales[itemKey]) {
+          itemSales[itemKey] = {
+            name: item.item.name,
+            quantity: 0,
+            revenue: 0,
+            cost: 0,
+          };
+        }
+        itemSales[itemKey].quantity += item.quantity;
+        itemSales[itemKey].revenue += item.quantity * item.price;
+        itemSales[itemKey].cost += item.quantity * (item.item.basePrice || 0);
+      });
+    });
+
+    const topItems = Object.values(itemSales)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    // Customer analysis
+    const customerSales: Record<string, { name: string; orders: number; total: number }> = {};
+    sales.forEach((sale) => {
+      const customerKey = sale.customer.name;
+      if (!customerSales[customerKey]) {
+        customerSales[customerKey] = {
+          name: customerKey,
+          orders: 0,
+          total: 0,
+        };
+      }
+      customerSales[customerKey].orders += 1;
+      customerSales[customerKey].total += sale.totalAmount;
+    });
+
+    const topCustomers = Object.values(customerSales)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 10);
+
+    const result = {
+      period: { start: startDate, end: endDate },
+      summary: {
+        totalSales,
+        totalPaid,
+        totalDiscount,
+        totalCost,
+        grossProfit: totalSales - totalCost,
+        netProfit: (totalSales - totalCost) - totalDiscount,
+        profitMargin: totalSales > 0 ? ((totalSales - totalCost) / totalSales) * 100 : 0,
+        numberOfSales: sales.length,
+        averageOrderValue: sales.length > 0 ? totalSales / sales.length : 0,
+        collectionRate: totalSales > 0 ? (totalPaid / totalSales) * 100 : 0,
+      },
+      paymentMethods: Object.entries(paymentMethods).map(([method, data]) => ({
+        method,
+        count: data.count,
+        total: data.total,
+        percentage: totalSales > 0 ? (data.total / totalSales) * 100 : 0,
+      })),
+      topItems,
+      topCustomers,
+      salesByDate: (() => {
+        const dailySales: Record<string, { date: string; sales: number; orders: number }> = {};
+        sales.forEach((sale) => {
+          const dateKey = format(sale.createdAt, "yyyy-MM-dd");
+          if (!dailySales[dateKey]) {
+            dailySales[dateKey] = { date: dateKey, sales: 0, orders: 0 };
+          }
+          dailySales[dateKey].sales += sale.totalAmount;
+          dailySales[dateKey].orders += 1;
+        });
+        return Object.values(dailySales).sort((a, b) => a.date.localeCompare(b.date));
+      })(),
+    };
+
+    res.json(result);
+  } catch (error) {
+    console.error("Enhanced sales report error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ NEW: Daily/Weekly/Monthly/Yearly Sales Reports with Specific Date Selection
+router.get("/reports/sales-by-period", authenticateToken, async (req, res) => {
+  const { period, start, end, customStart, customEnd } = req.query;
+  let startDate: Date;
+  let endDate: Date;
+  const now = new Date();
+
+  try {
+    if (period === 'custom' && customStart && customEnd) {
+      startDate = new Date(customStart as string);
+      endDate = new Date(customEnd as string);
+    } else {
+      switch (period) {
+        case 'day':
+          startDate = start ? new Date(start as string) : startOfDay(now);
+          endDate = end ? new Date(end as string) : endOfDay(now);
+          break;
+        case 'week':
+          startDate = start ? new Date(start as string) : startOfWeek(now);
+          endDate = end ? new Date(end as string) : endOfWeek(now);
+          break;
+        case 'month':
+          startDate = start ? new Date(start as string) : startOfMonth(now);
+          endDate = end ? new Date(end as string) : endOfMonth(now);
+          break;
+        case 'year':
+          startDate = start ? new Date(start as string) : startOfYear(now);
+          endDate = end ? new Date(end as string) : endOfYear(now);
+          break;
+        default:
+          startDate = startOfDay(now);
+          endDate = endOfDay(now);
+      }
+    }
+
+    const sales = await prisma.sale.findMany({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      include: {
+        items: { 
+          include: { 
+            item: true 
+          } 
+        },
+        customer: true,
+        user: true,
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Calculate comprehensive metrics
+    const totalSales = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+    const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
+    const totalDiscount = sales.reduce((sum, sale) => sum + sale.discount, 0);
+    const totalCost = sales.reduce((sum, sale) => {
+      return sum + sale.items.reduce((itemSum, item) => {
+        return itemSum + (item.quantity * (item.item.basePrice || 0));
+      }, 0);
+    }, 0);
+
+    // Sales by hour analysis
+    const salesByHour: Record<number, { sales: number; orders: number }> = {};
+    for (let i = 0; i < 24; i++) {
+      salesByHour[i] = { sales: 0, orders: 0 };
+    }
+    
+    sales.forEach((sale) => {
+      const hour = new Date(sale.createdAt).getHours();
+      salesByHour[hour].sales += sale.totalAmount;
+      salesByHour[hour].orders += 1;
+    });
+
+    // Sales by day of week
+    const salesByDay: Record<string, { sales: number; orders: number }> = {};
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    dayNames.forEach(day => {
+      salesByDay[day] = { sales: 0, orders: 0 };
+    });
+    
+    sales.forEach((sale) => {
+      const day = dayNames[new Date(sale.createdAt).getDay()];
+      salesByDay[day].sales += sale.totalAmount;
+      salesByDay[day].orders += 1;
+    });
+
+    // Top performing items
+    const itemPerformance: Record<string, { name: string; quantity: number; revenue: number; cost: number; profit: number }> = {};
+    sales.forEach((sale) => {
+      sale.items.forEach((item) => {
+        const itemKey = item.item.name;
+        if (!itemPerformance[itemKey]) {
+          itemPerformance[itemKey] = {
+            name: item.item.name,
+            quantity: 0,
+            revenue: 0,
+            cost: 0,
+            profit: 0,
+          };
+        }
+        const revenue = item.quantity * item.price;
+        const cost = item.quantity * (item.item.basePrice || 0);
+        itemPerformance[itemKey].quantity += item.quantity;
+        itemPerformance[itemKey].revenue += revenue;
+        itemPerformance[itemKey].cost += cost;
+        itemPerformance[itemKey].profit += revenue - cost;
+      });
+    });
+
+    const topItems = Object.values(itemPerformance)
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    const result = {
+      period: { start: startDate, end: endDate, type: period },
+      summary: {
+        totalSales,
+        totalPaid,
+        totalDiscount,
+        totalCost,
+        grossProfit: totalSales - totalCost,
+        netProfit: (totalSales - totalCost) - totalDiscount,
+        profitMargin: totalSales > 0 ? ((totalSales - totalCost) / totalSales) * 100 : 0,
+        numberOfSales: sales.length,
+        averageOrderValue: sales.length > 0 ? totalSales / sales.length : 0,
+        collectionRate: totalSales > 0 ? (totalPaid / totalSales) * 100 : 0,
+        outstandingAmount: totalSales - totalPaid,
+      },
+      salesByHour: Object.entries(salesByHour).map(([hour, data]) => ({
+        hour: parseInt(hour),
+        sales: data.sales,
+        orders: data.orders,
+      })),
+      salesByDay: Object.entries(salesByDay).map(([day, data]) => ({
+        day,
+        sales: data.sales,
+        orders: data.orders,
+      })),
+      topItems,
+      recentSales: sales.slice(0, 20).map(sale => ({
+        id: sale.id,
+        customer: sale.customer.name,
+        amount: sale.totalAmount,
+        paid: sale.paidAmount,
+        discount: sale.discount,
+        paymentType: sale.paymentType,
+        date: sale.createdAt,
+        items: sale.items.map(item => ({
+          name: item.item.name,
+          quantity: item.quantity,
+          price: item.price,
+        })),
+      })),
+    };
+
+    res.json(result);
+  } catch (error) {
+    console.error("Sales by period report error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ NEW: Loss Report - Items expiring, low stock, waste analysis
+router.get("/reports/loss-analysis", authenticateToken, async (req, res) => {
+  try {
+    const inventory = await prisma.inventoryItem.findMany({
+      include: {
+        saleItems: {
+          include: {
+            sale: true,
+          },
+        },
+      },
+    });
+
+    const now = new Date();
+    const thirtyDaysAgo = subDays(now, 30);
+    const sixtyDaysAgo = subDays(now, 60);
+
+    const lossAnalysis = inventory.map((item) => {
+      // Calculate potential losses
+      const currentValue = item.quantity * (item.basePrice || 0);
+      const potentialLoss = item.quantity * (item.basePrice || 0);
+      
+      // Calculate waste potential (items not sold in 30 days)
+      const recentSales = item.saleItems.filter((saleItem) => 
+        saleItem.sale.createdAt >= thirtyDaysAgo
+      );
+      const quantitySold = recentSales.reduce((sum, si) => sum + si.quantity, 0);
+      const wasteRisk = item.quantity - quantitySold;
+      
+      // Calculate expiry risk (items with low turnover)
+      const totalSold = item.saleItems.reduce((sum, si) => sum + si.quantity, 0);
+      const turnoverRate = item.quantity > 0 ? totalSold / item.quantity : 0;
+      const expiryRisk = turnoverRate < 0.1; // Less than 10% turnover
+      
+      // Calculate low stock risk
+      const lowStockRisk = item.quantity <= item.lowStockLimit;
+      
+      // Calculate overstock risk
+      const overstockRisk = item.quantity > (item.lowStockLimit * 3); // More than 3x low stock limit
+
+      return {
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        currentStock: item.quantity,
+        unit: item.unit,
+        basePrice: item.basePrice,
+        currentValue,
+        potentialLoss,
+        wasteRisk: Math.max(0, wasteRisk),
+        expiryRisk,
+        lowStockRisk,
+        overstockRisk,
+        turnoverRate: turnoverRate * 100, // Convert to percentage
+        lastSold: item.saleItems.length > 0 ? 
+          Math.max(...item.saleItems.map(si => si.sale.createdAt.getTime())) : null,
+        daysSinceLastSale: item.saleItems.length > 0 ? 
+          Math.floor((now.getTime() - Math.max(...item.saleItems.map(si => si.sale.createdAt.getTime()))) / (1000 * 60 * 60 * 24)) : null,
+        recommendations: [
+          ...(wasteRisk > 0 ? [`Reduce price to clear ${wasteRisk} ${item.unit} of ${item.name}`] : []),
+          ...(expiryRisk ? [`High expiry risk - consider promotions for ${item.name}`] : []),
+          ...(lowStockRisk ? [`Low stock alert for ${item.name}`] : []),
+          ...(overstockRisk ? [`Overstocked - reduce ordering for ${item.name}`] : []),
+        ],
+      };
+    });
+
+    // Calculate summary statistics
+    const summary = {
+      totalItems: lossAnalysis.length,
+      totalValue: lossAnalysis.reduce((sum, item) => sum + item.currentValue, 0),
+      totalPotentialLoss: lossAnalysis.reduce((sum, item) => sum + item.potentialLoss, 0),
+      highRiskItems: lossAnalysis.filter(item => 
+        item.wasteRisk > 0 || item.expiryRisk || item.lowStockRisk
+      ).length,
+      wasteRiskItems: lossAnalysis.filter(item => item.wasteRisk > 0).length,
+      expiryRiskItems: lossAnalysis.filter(item => item.expiryRisk).length,
+      lowStockItems: lossAnalysis.filter(item => item.lowStockRisk).length,
+      overstockItems: lossAnalysis.filter(item => item.overstockRisk).length,
+    };
+
+    // Sort by risk level
+    const sortedByRisk = lossAnalysis.sort((a, b) => {
+      const aRisk = (a.wasteRisk > 0 ? 3 : 0) + (a.expiryRisk ? 2 : 0) + (a.lowStockRisk ? 1 : 0);
+      const bRisk = (b.wasteRisk > 0 ? 3 : 0) + (b.expiryRisk ? 2 : 0) + (b.lowStockRisk ? 1 : 0);
+      return bRisk - aRisk;
+    });
+
+    res.json({ 
+      summary, 
+      items: sortedByRisk,
+      riskCategories: {
+        waste: sortedByRisk.filter(item => item.wasteRisk > 0),
+        expiry: sortedByRisk.filter(item => item.expiryRisk),
+        lowStock: sortedByRisk.filter(item => item.lowStockRisk),
+        overstock: sortedByRisk.filter(item => item.overstockRisk),
+      }
+    });
+  } catch (error) {
+    console.error("Loss analysis error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ NEW: Enhanced Inventory Report with Stock Movement Analysis
+router.get("/reports/enhanced-inventory", authenticateToken, async (req, res) => {
+  try {
+    const inventory = await prisma.inventoryItem.findMany({
+      include: {
+        saleItems: {
+          include: {
+            sale: true,
+          },
+        },
+      },
+    });
+
+    const now = new Date();
+    const thirtyDaysAgo = subDays(now, 30);
+    const ninetyDaysAgo = subDays(now, 90);
+
+    const enhancedInventory = inventory.map((item) => {
+      // Calculate stock movement
+      const recentSales = item.saleItems.filter((saleItem) => 
+        saleItem.sale.createdAt >= thirtyDaysAgo
+      );
+      const olderSales = item.saleItems.filter((saleItem) => 
+        saleItem.sale.createdAt >= ninetyDaysAgo && saleItem.sale.createdAt < thirtyDaysAgo
+      );
+      
+      const recentQuantity = recentSales.reduce((sum, si) => sum + si.quantity, 0);
+      const olderQuantity = olderSales.reduce((sum, si) => sum + si.quantity, 0);
+      
+      // Calculate trends
+      const recentVelocity = recentQuantity / 30; // per day
+      const olderVelocity = olderQuantity / 60; // per day
+      const velocityChange = olderVelocity > 0 ? ((recentVelocity - olderVelocity) / olderVelocity) * 100 : 0;
+      
+      // Calculate stock health
+      const stockHealth = (() => {
+        if (item.quantity === 0) return 'out_of_stock';
+        if (item.quantity <= item.lowStockLimit) return 'low_stock';
+        if (item.quantity > item.lowStockLimit * 3) return 'overstocked';
+        return 'healthy';
+      })();
+
+      // Calculate reorder recommendations
+      const daysUntilReorder = recentVelocity > 0 ? 
+        Math.max(0, (item.lowStockLimit - item.quantity) / recentVelocity) : null;
+      
+      const recommendedOrderQuantity = recentVelocity > 0 ? 
+        Math.ceil(recentVelocity * 30) : item.lowStockLimit; // 30 days supply
+
+      return {
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        subtype: item.subtype,
+        currentStock: item.quantity,
+        unit: item.unit,
+        basePrice: item.basePrice,
+        sellPrice: item.sellPrice,
+        lowStockLimit: item.lowStockLimit,
+        currentValue: item.quantity * (item.basePrice || 0),
+        potentialValue: item.quantity * (item.sellPrice || 0),
+        profitMargin: item.basePrice && item.sellPrice ? 
+          ((item.sellPrice - item.basePrice) / item.sellPrice) * 100 : 0,
+        stockHealth,
+        recentVelocity,
+        velocityChange,
+        daysUntilReorder,
+        recommendedOrderQuantity,
+        lastUpdated: item.updatedAt,
+        totalSold: item.saleItems.reduce((sum, si) => sum + si.quantity, 0),
+        lastSold: item.saleItems.length > 0 ? 
+          Math.max(...item.saleItems.map(si => si.sale.createdAt.getTime())) : null,
+      };
+    });
+
+    // Calculate summary statistics
+    const summary = {
+      totalItems: enhancedInventory.length,
+      totalValue: enhancedInventory.reduce((sum, item) => sum + item.currentValue, 0),
+      totalPotentialValue: enhancedInventory.reduce((sum, item) => sum + item.potentialValue, 0),
+      stockHealthBreakdown: {
+        healthy: enhancedInventory.filter(item => item.stockHealth === 'healthy').length,
+        lowStock: enhancedInventory.filter(item => item.stockHealth === 'low_stock').length,
+        overstocked: enhancedInventory.filter(item => item.stockHealth === 'overstocked').length,
+        outOfStock: enhancedInventory.filter(item => item.stockHealth === 'out_of_stock').length,
+      },
+      itemsNeedingReorder: enhancedInventory.filter(item => 
+        item.daysUntilReorder !== null && item.daysUntilReorder <= 7
+      ).length,
+      highValueItems: enhancedInventory.filter(item => item.currentValue > 10000).length,
+      trendingUp: enhancedInventory.filter(item => item.velocityChange > 10).length,
+      trendingDown: enhancedInventory.filter(item => item.velocityChange < -10).length,
+    };
+
+    res.json({ summary, items: enhancedInventory });
+  } catch (error) {
+    console.error("Enhanced inventory report error:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// ✅ NEW: Cash Flow Report
+router.get("/reports/cash-flow", authenticateToken, async (req, res) => {
+  const { start, end } = req.query;
+  const startDate = start ? new Date(start as string) : subDays(new Date(), 30);
+  const endDate = end ? new Date(end as string) : new Date();
+
+  try {
+    const sales = await prisma.sale.findMany({
+      where: {
+        createdAt: { gte: startDate, lte: endDate },
+      },
+      include: {
+        items: { 
+          include: { 
+            item: true 
+          } 
+        },
+      },
+    });
+
+    // Calculate cash flow metrics
+    const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+    const totalCollected = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
+    const totalOutstanding = totalRevenue - totalCollected;
+    const totalDiscounts = sales.reduce((sum, sale) => sum + sale.discount, 0);
+    
+    // Calculate cost of goods sold
+    const totalCost = sales.reduce((sum, sale) => {
+      return sum + sale.items.reduce((itemSum, item) => {
+        return itemSum + (item.quantity * (item.item.basePrice || 0));
+      }, 0);
+    }, 0);
+
+    // Payment method analysis
+    const paymentMethods: Record<string, { count: number; total: number; collected: number }> = {};
+    sales.forEach((sale) => {
+      const method = sale.paymentType;
+      if (!paymentMethods[method]) {
+        paymentMethods[method] = { count: 0, total: 0, collected: 0 };
+      }
+      paymentMethods[method].count += 1;
+      paymentMethods[method].total += sale.totalAmount;
+      paymentMethods[method].collected += sale.paidAmount;
+    });
+
+    // Daily cash flow
+    const dailyCashFlow: Record<string, { revenue: number; collected: number; outstanding: number }> = {};
+    sales.forEach((sale) => {
+      const dateKey = format(sale.createdAt, "yyyy-MM-dd");
+      if (!dailyCashFlow[dateKey]) {
+        dailyCashFlow[dateKey] = { revenue: 0, collected: 0, outstanding: 0 };
+      }
+      dailyCashFlow[dateKey].revenue += sale.totalAmount;
+      dailyCashFlow[dateKey].collected += sale.paidAmount;
+      dailyCashFlow[dateKey].outstanding += (sale.totalAmount - sale.paidAmount);
+    });
+
+    const result = {
+      period: { start: startDate, end: endDate },
+      summary: {
+        totalRevenue,
+        totalCollected,
+        totalOutstanding,
+        totalDiscounts,
+        totalCost,
+        grossProfit: totalRevenue - totalCost,
+        netProfit: (totalRevenue - totalCost) - totalDiscounts,
+        collectionRate: totalRevenue > 0 ? (totalCollected / totalRevenue) * 100 : 0,
+        outstandingRate: totalRevenue > 0 ? (totalOutstanding / totalRevenue) * 100 : 0,
+      },
+      paymentMethods: Object.entries(paymentMethods).map(([method, data]) => ({
+        method,
+        count: data.count,
+        total: data.total,
+        collected: data.collected,
+        outstanding: data.total - data.collected,
+        collectionRate: data.total > 0 ? (data.collected / data.total) * 100 : 0,
+      })),
+      dailyCashFlow: Object.entries(dailyCashFlow)
+        .map(([date, data]) => ({
+          date,
+          revenue: data.revenue,
+          collected: data.collected,
+          outstanding: data.outstanding,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    };
+
+    res.json(result);
+  } catch (error) {
+    console.error("Cash flow report error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });

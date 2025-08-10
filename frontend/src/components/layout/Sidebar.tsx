@@ -59,6 +59,10 @@ export function Sidebar({ className }: SidebarProps) {
               <NavLink
                 key={item.name}
                 to={item.href}
+                onClick={() => {
+                  console.log(`Navigating to: ${item.href}`);
+                  console.log(`Current location: ${location.pathname}`);
+                }}
                 className={cn(
                   "flex items-center rounded-lg px-3 py-2 transition-smooth",
                   isActive 

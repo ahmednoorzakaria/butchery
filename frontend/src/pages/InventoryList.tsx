@@ -40,7 +40,9 @@ interface InventoryItem {
   category: string;
   subtype?: string;
   unit: string;
-  price: number;
+  basePrice: number; // Cost price
+  sellPrice: number; // Selling price
+  limitPrice: number; // Minimum selling price
   quantity: number;
   lowStockLimit?: number;
   lowStockAlert: boolean;
@@ -79,6 +81,17 @@ const getCategoryIconColor = (category: string) => {
   }
 };
 
+// Helper function to calculate profit margin
+const calculateProfitMargin = (sellPrice: number, basePrice: number) => {
+  if (basePrice === 0) return 0;
+  return ((sellPrice - basePrice) / basePrice) * 100;
+};
+
+// Helper function to format currency
+const formatCurrency = (amount: number) => {
+  return `SH ${amount.toLocaleString()}`;
+};
+
 export default function InventoryManagement() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,7 +108,9 @@ export default function InventoryManagement() {
     name: "",
     category: "",
     unit: "",
-    price: "",
+    basePrice: "",
+    sellPrice: "",
+    limitPrice: "",
     quantity: "",
   });
 
@@ -136,13 +151,15 @@ export default function InventoryManagement() {
       name: "",
       category: "",
       unit: "",
-      price: "",
+      basePrice: "",
+      sellPrice: "",
+      limitPrice: "",
       quantity: "",
     });
   };
 
   const handleAddItem = async () => {
-    if (!formData.name || !formData.category || !formData.unit || !formData.price || !formData.quantity) {
+    if (!formData.name || !formData.category || !formData.unit || !formData.basePrice || !formData.sellPrice || !formData.limitPrice || !formData.quantity) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -151,13 +168,46 @@ export default function InventoryManagement() {
       return;
     }
 
+    // Validate prices
+    const basePrice = parseFloat(formData.basePrice);
+    const sellPrice = parseFloat(formData.sellPrice);
+    const limitPrice = parseFloat(formData.limitPrice);
+
+    if (basePrice <= 0 || sellPrice <= 0 || limitPrice <= 0) {
+      toast({
+        title: "Error",
+        description: "All prices must be greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (sellPrice < limitPrice) {
+      toast({
+        title: "Error",
+        description: "Sell price cannot be less than limit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (basePrice > sellPrice) {
+      toast({
+        title: "Warning",
+        description: "Base price is higher than sell price. This will result in a loss.",
+        variant: "destructive",
+      });
+    }
+
     try {
       setSubmitting(true);
       const newItemData = {
         name: formData.name,
         category: formData.category,
         unit: formData.unit,
-        price: parseFloat(formData.price),
+        basePrice: parseFloat(formData.basePrice),
+        sellPrice: parseFloat(formData.sellPrice),
+        limitPrice: parseFloat(formData.limitPrice),
         quantity: parseInt(formData.quantity),
       };
 
@@ -181,7 +231,7 @@ export default function InventoryManagement() {
   };
 
   const handleUpdateItem = async () => {
-    if (!selectedProduct || !formData.name || !formData.category || !formData.unit || !formData.price || !formData.quantity) {
+    if (!selectedProduct || !formData.name || !formData.category || !formData.unit || !formData.basePrice || !formData.sellPrice || !formData.limitPrice || !formData.quantity) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -190,13 +240,46 @@ export default function InventoryManagement() {
       return;
     }
 
+    // Validate prices
+    const basePrice = parseFloat(formData.basePrice);
+    const sellPrice = parseFloat(formData.sellPrice);
+    const limitPrice = parseFloat(formData.limitPrice);
+
+    if (basePrice <= 0 || sellPrice <= 0 || limitPrice <= 0) {
+      toast({
+        title: "Error",
+        description: "All prices must be greater than zero",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (sellPrice < limitPrice) {
+      toast({
+        title: "Error",
+        description: "Sell price cannot be less than limit price",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (basePrice > sellPrice) {
+      toast({
+        title: "Warning",
+        description: "Base price is higher than sell price. This will result in a loss.",
+        variant: "destructive",
+      });
+    }
+
     try {
       setSubmitting(true);
       const updateData = {
         name: formData.name,
         category: formData.category,
         unit: formData.unit,
-        price: parseFloat(formData.price),
+        basePrice: parseFloat(formData.basePrice),
+        sellPrice: parseFloat(formData.sellPrice),
+        limitPrice: parseFloat(formData.limitPrice),
         quantity: parseInt(formData.quantity),
       };
 
@@ -257,7 +340,9 @@ export default function InventoryManagement() {
       name: product.name,
       category: product.category,
       unit: product.unit,
-      price: product.price.toString(),
+      basePrice: product.basePrice.toString(),
+      sellPrice: product.sellPrice.toString(),
+      limitPrice: product.limitPrice.toString(),
       quantity: product.quantity.toString(),
     });
     setEditMode(true);
@@ -385,12 +470,39 @@ export default function InventoryManagement() {
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="edit-price">Price (SH)</Label>
+                      <Label htmlFor="edit-basePrice">Base Price (SH) - Cost Price</Label>
                       <Input
-                        id="edit-price"
+                        id="edit-basePrice"
                         type="number"
-                        value={formData.price}
-                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                        step="0.01"
+                        min="0"
+                        value={formData.basePrice}
+                        onChange={(e) => setFormData({ ...formData, basePrice: e.target.value })}
+                        disabled={submitting}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-sellPrice">Default Sell Price (SH) - Reference Price</Label>
+                      <Input
+                        id="edit-sellPrice"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.sellPrice}
+                        onChange={(e) => setFormData({ ...formData, sellPrice: e.target.value })}
+                        disabled={submitting}
+                      />
+                      <p className="text-xs text-muted-foreground">Default price for this item. Actual sale price can vary per transaction.</p>
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-limitPrice">Limit Price (SH) - Minimum Price</Label>
+                      <Input
+                        id="edit-limitPrice"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={formData.limitPrice}
+                        onChange={(e) => setFormData({ ...formData, limitPrice: e.target.value })}
                         disabled={submitting}
                       />
                     </div>
@@ -420,8 +532,17 @@ export default function InventoryManagement() {
                       <Badge variant="secondary">{selectedProduct.category}</Badge>
                     </div>
                     <div>
-                      <Label>Price per {selectedProduct.unit}</Label>
-                      <p className="text-xl font-bold">SH {selectedProduct.price.toLocaleString()}</p>
+                      <Label>Base Price</Label>
+                      <p className="text-lg font-semibold">SH {selectedProduct.basePrice.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <Label>Default Sell Price</Label>
+                      <p className="text-lg font-semibold">SH {selectedProduct.sellPrice.toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Reference price - actual sale price may vary</p>
+                    </div>
+                    <div>
+                      <Label>Limit Price</Label>
+                      <p className="text-lg font-semibold">SH {selectedProduct.limitPrice.toLocaleString()}</p>
                     </div>
                     <div>
                       <Label>Current Stock</Label>
@@ -433,11 +554,32 @@ export default function InventoryManagement() {
                       </p>
                     </div>
                     <div>
-                      <Label>Total Value</Label>
+                      <Label>Total Value (Base Cost)</Label>
                       <p className="text-lg font-semibold">
-                        SH {(selectedProduct.price * selectedProduct.quantity).toLocaleString()}
+                        SH {(selectedProduct.basePrice * selectedProduct.quantity).toLocaleString()}
                       </p>
                     </div>
+                                       <div>
+                     <Label>Potential Revenue (Default Price)</Label>
+                     <p className="text-lg font-semibold text-green-600">
+                       SH {(selectedProduct.sellPrice * selectedProduct.quantity).toLocaleString()}
+                     </p>
+                     <p className="text-xs text-muted-foreground">Based on default sell price</p>
+                   </div>
+                                       <div>
+                     <Label>Profit Margin (Default Price)</Label>
+                     <p className="text-lg font-semibold text-green-600">
+                       {calculateProfitMargin(selectedProduct.sellPrice, selectedProduct.basePrice).toFixed(1)}%
+                     </p>
+                     <p className="text-xs text-muted-foreground">Based on default sell price</p>
+                   </div>
+                                       <div>
+                     <Label>Profit per {selectedProduct.unit} (Default)</Label>
+                     <p className="text-lg font-semibold text-green-600">
+                       SH {(selectedProduct.sellPrice - selectedProduct.basePrice).toLocaleString()}
+                     </p>
+                     <p className="text-xs text-muted-foreground">Based on default sell price</p>
+                   </div>
                   </>
                 )}
               </CardContent>
@@ -452,7 +594,7 @@ export default function InventoryManagement() {
     <Layout title="Inventory Management" showSearch={false}>
       <div className="space-y-6">
         {/* Header Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center space-x-2">
@@ -494,12 +636,36 @@ export default function InventoryManagement() {
               <div className="flex items-center space-x-2">
                 <Package className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="text-sm text-muted-foreground">Total Value</p>
-                  <p className="text-2xl font-bold">SH {inventory.reduce((acc, item) => acc + (item.price * item.quantity), 0).toLocaleString()}</p>
+                  <p className="text-sm text-muted-foreground">Total Value (Base Cost)</p>
+                  <p className="text-2xl font-bold">SH {inventory.reduce((acc, item) => acc + (item.basePrice * item.quantity), 0).toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
+          
+                       <Card>
+               <CardContent className="p-4">
+                 <div className="flex items-center space-x-2">
+                   <Package className="h-5 w-5 text-green-600" />
+                   <div>
+                     <p className="text-sm text-muted-foreground">Potential Revenue (Default Prices)</p>
+                     <p className="text-2xl font-bold text-green-600">SH {inventory.reduce((acc, item) => acc + (item.sellPrice * item.quantity), 0).toLocaleString()}</p>
+                   </div>
+                 </div>
+               </CardContent>
+             </Card>
+          
+                       <Card>
+               <CardContent className="p-4">
+                 <div className="flex items-center space-x-2">
+                   <Package className="h-5 w-5 text-green-600" />
+                   <div>
+                     <p className="text-sm text-muted-foreground">Total Profit (Default Prices)</p>
+                     <p className="text-2xl font-bold text-green-600">SH {inventory.reduce((acc, item) => acc + ((item.sellPrice - item.basePrice) * item.quantity), 0).toLocaleString()}</p>
+                   </div>
+                 </div>
+               </CardContent>
+             </Card>
         </div>
 
         {/* Search and Filter Bar */}
@@ -529,10 +695,35 @@ export default function InventoryManagement() {
             </div>
           </div>
           
-          <Button variant="default" size="lg" className="w-full md:w-auto" onClick={handleOpenAddDialog}>
-            <Plus className="h-5 w-5 mr-2" />
-            Add New Item
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                const lowProfitItems = inventory.filter(item => 
+                  calculateProfitMargin(item.sellPrice, item.basePrice) < 20
+                );
+                if (lowProfitItems.length > 0) {
+                  toast({
+                    title: "Low Profit Items",
+                    description: `Found ${lowProfitItems.length} items with profit margin below 20%`,
+                    variant: "destructive",
+                  });
+                } else {
+                  toast({
+                    title: "Profit Analysis",
+                    description: "All items have good profit margins (20%+)",
+                  });
+                }
+              }}
+            >
+              Analyze Profits
+            </Button>
+            <Button variant="default" size="lg" onClick={handleOpenAddDialog}>
+              <Plus className="h-5 w-5 mr-2" />
+              Add New Item
+            </Button>
+          </div>
         </div>
 
         {/* Inventory Grid */}
@@ -550,6 +741,11 @@ export default function InventoryManagement() {
                   {item.lowStockAlert && (
                     <Badge className="absolute top-2 right-2 bg-warning text-warning-foreground">
                       Low Stock
+                    </Badge>
+                  )}
+                  {item.sellPrice < item.limitPrice && (
+                    <Badge className="absolute top-2 left-2 bg-destructive text-destructive-foreground">
+                      Below Limit
                     </Badge>
                   )}
                 </div>
@@ -592,26 +788,43 @@ export default function InventoryManagement() {
                 </CardHeader>
                 
                 <CardContent className="pt-0">
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Price/{item.unit}</span>
-                      <span className="font-semibold">SH {item.price.toLocaleString()}</span>
+                                      <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Base Price/{item.unit}</span>
+                        <span className="font-semibold">SH {item.basePrice.toLocaleString()}</span>
+                      </div>
+                                     <div className="flex items-center justify-between">
+                 <span className="text-sm text-muted-foreground">Default Sell Price/{item.unit}</span>
+                 <span className="font-semibold text-green-600">SH {item.sellPrice.toLocaleString()}</span>
+               </div>
+                                     <div className="flex items-center justify-between">
+                 <span className="text-sm text-muted-foreground">Profit Margin (Default)</span>
+                 <span className="font-semibold text-green-600">
+                   {calculateProfitMargin(item.sellPrice, item.basePrice).toFixed(1)}%
+                 </span>
+               </div>
+                      
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-muted-foreground">Stock</span>
+                        <span className={cn(
+                          "font-semibold",
+                          item.lowStockAlert ? "text-warning" : "text-success"
+                        )}>
+                          {item.quantity} {item.unit}
+                        </span>
+                      </div>
+                      
+                      <div className="flex gap-1">
+                        <Badge variant="secondary" className="w-fit">
+                          {item.category}
+                        </Badge>
+                        {item.sellPrice < item.limitPrice && (
+                          <Badge variant="destructive" className="w-fit text-xs">
+                            Below Limit
+                          </Badge>
+                        )}
+                      </div>
                     </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-muted-foreground">Stock</span>
-                      <span className={cn(
-                        "font-semibold",
-                        item.lowStockAlert ? "text-warning" : "text-success"
-                      )}>
-                        {item.quantity} {item.unit}
-                      </span>
-                    </div>
-                    
-                    <Badge variant="secondary" className="w-fit">
-                      {item.category}
-                    </Badge>
-                  </div>
                 </CardContent>
               </Card>
             );
@@ -634,13 +847,43 @@ export default function InventoryManagement() {
           </Card>
         )}
 
+        {/* Inventory Summary */}
+        {filteredInventory.length > 0 && (
+          <Card className="p-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-sm text-muted-foreground">Items Shown</p>
+                <p className="text-lg font-semibold">{filteredInventory.length}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Cost Value</p>
+                <p className="text-lg font-semibold">
+                  {formatCurrency(filteredInventory.reduce((acc, item) => acc + (item.basePrice * item.quantity), 0))}
+                </p>
+              </div>
+                             <div>
+                 <p className="text-sm text-muted-foreground">Potential Revenue (Default Prices)</p>
+                 <p className="text-lg font-semibold text-green-600">
+                   {formatCurrency(filteredInventory.reduce((acc, item) => acc + (item.sellPrice * item.quantity), 0))}
+                 </p>
+               </div>
+                             <div>
+                 <p className="text-sm text-muted-foreground">Total Profit (Default Prices)</p>
+                 <p className="text-lg font-semibold text-green-600">
+                   {formatCurrency(filteredInventory.reduce((acc, item) => acc + ((item.sellPrice - item.basePrice) * item.quantity), 0))}
+                 </p>
+               </div>
+            </div>
+          </Card>
+        )}
+
         {/* Add Item Dialog */}
         <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Add New Item</DialogTitle>
               <DialogDescription>
-                Add a new item to your inventory. All fields are required.
+                Add a new item to your inventory. All fields are required. Note: The sell price is a default/reference price - actual sale prices can vary per transaction.
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -685,15 +928,46 @@ export default function InventoryManagement() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="price">Price (SH)</Label>
+                <Label htmlFor="basePrice">Base Price (SH) - Cost Price</Label>
                 <Input
-                  id="price"
+                  id="basePrice"
                   type="number"
-                  placeholder="Enter price"
-                  value={formData.price}
-                  onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                  step="0.01"
+                  min="0"
+                  placeholder="Enter cost price per unit"
+                  value={formData.basePrice}
+                  onChange={(e) => setFormData({ ...formData, basePrice: e.target.value })}
                   disabled={submitting}
                 />
+                <p className="text-xs text-muted-foreground">The cost price you paid for this item</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="sellPrice">Default Sell Price (SH) - Reference Price</Label>
+                <Input
+                  id="sellPrice"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Enter default selling price per unit"
+                  value={formData.sellPrice}
+                  onChange={(e) => setFormData({ ...formData, sellPrice: e.target.value })}
+                  disabled={submitting}
+                />
+                <p className="text-xs text-muted-foreground">Default price for this item. Actual sale price can vary per transaction.</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="limitPrice">Limit Price (SH) - Minimum Price</Label>
+                <Input
+                  id="limitPrice"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="Enter minimum selling price"
+                  value={formData.limitPrice}
+                  onChange={(e) => setFormData({ ...formData, limitPrice: e.target.value })}
+                  disabled={submitting}
+                />
+                <p className="text-xs text-muted-foreground">The lowest price you're willing to sell for</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="quantity">Quantity</Label>

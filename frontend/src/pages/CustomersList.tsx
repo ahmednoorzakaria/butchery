@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search, Phone, User, MoreVertical, CreditCard, Receipt, DollarSign } from "lucide-react";
+import { Plus, Search, Phone, User, MoreVertical, CreditCard, Receipt, DollarSign, AlertTriangle } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,6 +47,25 @@ interface CustomerTransaction {
   amount: number;
   reason: string;
   createdAt: string;
+  saleId?: number;
+  sale?: {
+    id: number;
+    totalAmount: number;
+    discount: number;
+    paidAmount: number;
+    paymentType: string;
+    createdAt: string;
+    items: {
+      id: number;
+      quantity: number;
+      price: number;
+      item: {
+        id: number;
+        name: string;
+        unit: string;
+      };
+    }[];
+  };
 }
 
 interface CustomerAccount {
@@ -63,21 +82,77 @@ export default function CustomerManagement() {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [formData, setFormData] = useState({ name: "", phone: "" });
-  const [paymentData, setPaymentData] = useState({ amount: "", paymentType: "Cash" });
+  const [paymentData, setPaymentData] = useState({ amount: "", paymentType: "CASH" });
+  const [showSaleDetailsDialog, setShowSaleDetailsDialog] = useState(false);
+  const [selectedSale, setSelectedSale] = useState<CustomerTransaction['sale'] | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch customers
-  const { data: customers = [], isLoading } = useQuery({
+  // Ensure component is properly mounted before rendering
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
+
+  // Fetch customers with improved configuration
+  const { 
+    data: customers = [], 
+    isLoading, 
+    error,
+    refetch,
+    isFetching 
+  } = useQuery({
     queryKey: ['customers'],
-    queryFn: () => customersAPI.getAll().then(res => res.data)
+    queryFn: async () => {
+      console.log('Fetching customers...');
+      try {
+        const response = await customersAPI.getAll();
+        console.log('Customers response:', response);
+        return response.data || [];
+      } catch (error) {
+        console.error('Error fetching customers:', error);
+        throw error;
+      }
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    retry: 2,
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+  });
+
+  // Ensure query is executed when component mounts
+  useEffect(() => {
+    console.log('CustomersList mounted, triggering query...');
+    refetch();
+  }, [refetch]);
+
+  // Debug logging
+  console.log('CustomersList render state:', { 
+    customers, 
+    isLoading, 
+    error, 
+    isFetching,
+    customersLength: customers?.length 
   });
 
   // Fetch customer account data
   const { data: customerAccount, isLoading: isLoadingAccount } = useQuery({
     queryKey: ['customerAccount', selectedCustomer?.id],
-    queryFn: () => selectedCustomer ? customersAPI.getTransactions(selectedCustomer.id.toString()).then(res => res.data) : null,
-    enabled: !!selectedCustomer && (showAccountDialog || showPaymentDialog)
+    queryFn: async () => {
+      if (!selectedCustomer) return null;
+      try {
+        const response = await customersAPI.getTransactions(selectedCustomer.id.toString());
+        return response.data || null;
+      } catch (error) {
+        console.error('Error fetching customer account:', error);
+        throw error;
+      }
+    },
+    enabled: !!selectedCustomer && (showAccountDialog || showPaymentDialog),
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    retry: 1,
   });
 
   // Add customer mutation
@@ -92,10 +167,11 @@ export default function CustomerManagement() {
         description: "Customer added successfully",
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { error?: string } } };
       toast({
         title: "Error",
-        description: error.response?.data?.error || "Failed to add customer",
+        description: apiError?.response?.data?.error || "Failed to add customer",
         variant: "destructive",
       });
     }
@@ -108,16 +184,17 @@ export default function CustomerManagement() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customerAccount', selectedCustomer?.id] });
       setShowPaymentDialog(false);
-      setPaymentData({ amount: "", paymentType: "Cash" });
+                      setPaymentData({ amount: "", paymentType: "CASH" });
       toast({
         title: "Success",
         description: "Payment recorded successfully",
       });
     },
-    onError: (error: any) => {
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { error?: string } } };
       toast({
         title: "Error",
-        description: error.response?.data?.error || "Failed to record payment",
+        description: apiError?.response?.data?.error || "Failed to record payment",
         variant: "destructive",
       });
     }
@@ -188,10 +265,37 @@ export default function CustomerManagement() {
     });
   };
 
+  const handleViewSaleDetails = (sale: CustomerTransaction['sale']) => {
+    if (sale) {
+      setSelectedSale(sale);
+      setShowSaleDetailsDialog(true);
+    }
+  };
+
   const totalCustomers = customers.length;
   const activeCustomers = customers.length; // All customers are considered active for now
 
-  if (isLoading) {
+  // Show error state
+  if (error) {
+    return (
+      <Layout title="Customer Management" showSearch={false}>
+        <div className="flex flex-col items-center justify-center h-64 space-y-4">
+          <div className="text-center">
+            <AlertTriangle className="h-12 w-12 text-destructive mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">Failed to load customers</h3>
+            <p className="text-muted-foreground mb-4">
+              {error instanceof Error ? error.message : "An error occurred while loading customers"}
+            </p>
+            <Button onClick={() => refetch()} variant="outline">
+              Try Again
+            </Button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (isLoading || !isMounted) {
     return (
       <Layout title="Customer Management" showSearch={false}>
         <div className="flex items-center justify-center h-64">
@@ -479,11 +583,25 @@ export default function CustomerManagement() {
                   <h4 className="font-medium">Transaction History</h4>
                   {customerAccount.transactions.length > 0 ? (
                     customerAccount.transactions.map((transaction) => (
-                      <Card key={transaction.id}>
+                      <Card 
+                        key={transaction.id} 
+                        className={cn(
+                          "transition-colors",
+                          transaction.saleId && "cursor-pointer hover:bg-muted/50"
+                        )}
+                        onClick={() => transaction.saleId && handleViewSaleDetails(transaction.sale)}
+                      >
                         <CardContent className="p-3">
                           <div className="flex justify-between items-start">
                             <div className="flex-1">
-                              <p className="font-medium">{transaction.reason}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium">{transaction.reason}</p>
+                                {transaction.saleId && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Sale #{transaction.saleId}
+                                  </Badge>
+                                )}
+                              </div>
                               <p className="text-sm text-muted-foreground">
                                 {new Date(transaction.createdAt).toLocaleString()}
                               </p>
@@ -566,9 +684,8 @@ export default function CustomerManagement() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Cash">Cash</SelectItem>
-                        <SelectItem value="Transfer">Bank Transfer</SelectItem>
-                        <SelectItem value="Card">Card Payment</SelectItem>
+                        <SelectItem value="CASH">Cash</SelectItem>
+                        <SelectItem value="MPESA">M-Pesa</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -579,7 +696,7 @@ export default function CustomerManagement() {
             <DialogFooter>
               <Button variant="outline" onClick={() => {
                 setShowPaymentDialog(false);
-                setPaymentData({ amount: "", paymentType: "Cash" });
+                                        setPaymentData({ amount: "", paymentType: "CASH" });
               }}>
                 Cancel
               </Button>
@@ -588,6 +705,112 @@ export default function CustomerManagement() {
                 disabled={addPaymentMutation.isPending || !paymentData.amount}
               >
                 {addPaymentMutation.isPending ? "Recording..." : "Record Payment"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Sale Details Dialog */}
+        <Dialog open={showSaleDetailsDialog} onOpenChange={setShowSaleDetailsDialog}>
+          <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-hidden">
+            <DialogHeader>
+              <DialogTitle>Sale Details</DialogTitle>
+              <DialogDescription>
+                Sale #{selectedSale?.id} - {selectedCustomer?.name}
+              </DialogDescription>
+            </DialogHeader>
+            
+            {selectedSale ? (
+              <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                {/* Sale Summary */}
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Sale ID</p>
+                        <p className="font-semibold">#{selectedSale.id}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Date</p>
+                        <p className="font-semibold">
+                          {new Date(selectedSale.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Payment Method</p>
+                        <p className="font-semibold">{selectedSale.paymentType}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Status</p>
+                        <Badge variant={selectedSale.paidAmount >= selectedSale.totalAmount ? "default" : "destructive"}>
+                          {selectedSale.paidAmount >= selectedSale.totalAmount ? "Paid" : "Pending"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Sale Items */}
+                <div className="space-y-2">
+                  <h4 className="font-medium">Items Sold</h4>
+                  {selectedSale.items.map((item) => (
+                    <Card key={item.id}>
+                      <CardContent className="p-3">
+                        <div className="flex justify-between items-center">
+                          <div className="flex-1">
+                            <p className="font-medium">{item.item.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {item.quantity} {item.item.unit} @ KSH {item.price.toLocaleString()}
+                            </p>
+                          </div>
+                          <p className="font-semibold">
+                            KSH {(item.quantity * item.price).toLocaleString()}
+                          </p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Sale Totals */}
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span>Subtotal:</span>
+                        <span>KSH {(selectedSale.totalAmount + selectedSale.discount).toLocaleString()}</span>
+                      </div>
+                      {selectedSale.discount > 0 && (
+                        <div className="flex justify-between text-muted-foreground">
+                          <span>Discount:</span>
+                          <span>-KSH {selectedSale.discount.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-semibold text-lg border-t pt-2">
+                        <span>Total:</span>
+                        <span>KSH {selectedSale.totalAmount.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Paid:</span>
+                        <span>KSH {selectedSale.paidAmount.toLocaleString()}</span>
+                      </div>
+                      {selectedSale.paidAmount < selectedSale.totalAmount && (
+                        <div className="flex justify-between text-destructive font-semibold">
+                          <span>Balance:</span>
+                          <span>KSH {(selectedSale.totalAmount - selectedSale.paidAmount).toLocaleString()}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <p className="text-center py-4">No sale data available</p>
+            )}
+            
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowSaleDetailsDialog(false)}>
+                Close
               </Button>
             </DialogFooter>
           </DialogContent>

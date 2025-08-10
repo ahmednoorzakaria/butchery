@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: "http://13.49.240.213:3000",
+  baseURL: "http://localhost:3001",
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
@@ -58,15 +58,30 @@ export const authAPI = {
   },
 };
 
-
 // Inventory API
 export const inventoryAPI = {
+  // Basic CRUD
   getAll: () => api.get("/inventory"),
-  getById: (id: string) => api.get(`/inventory/${id}`),
+  getById: (id: string | number) => api.get(`/inventory/${id}`),
   create: (data: any) => api.post("/inventory", data),
-  update: (id: string, data: any) => api.put(`/inventory/${id}`, data),
-  delete: (id: string) => api.delete(`/inventory/${id}`),
+  update: (id: string | number, data: any) => api.put(`/inventory/${id}`, data),
+  delete: (id: string | number) => api.delete(`/inventory/${id}`),
+
+  // Stock management
+  stockIn: (id: string | number, quantity: number) =>
+    api.post(`/inventory/${id}/stock-in`, { quantity }),
+  stockOut: (id: string | number, quantity: number) =>
+    api.post(`/inventory/${id}/stock-out`, { quantity }),
+
+  // Transactions
+  getTransactions: (id: string | number) =>
+    api.get(`/inventory/${id}/transactions`),
+
+  // Direct quantity increase (alternative to stock-in)
+  increaseQuantity: (id: string | number, quantity: number) =>
+    api.post(`/inventory/${id}/increase`, { quantity }),
 };
+
 
 // Customers API
 export const customersAPI = {
@@ -98,13 +113,24 @@ export const salesAPI = {
 
 // Reports API
 export const reportsAPI = {
-  getOutstandingBalances: () => api.get("/sales/reports/outstanding-balances"),
-  getTopProducts: (start?: string, end?: string) =>
+  // Profits and Losses
+  getProfits: (start?: string, end?: string) =>
+    api.get("/sales/reports/profit-loss", { params: { start, end } }),
+  getProjectedProfits: () => api.get("/sales/reports/inventory-projections"),
+  getLosses: (start?: string, end?: string) =>
+    api.get("/sales/reports/loss-analysis", { params: { start, end } }),
+  
+  // Sales Analysis
+  getMostSold: (start?: string, end?: string) =>
     api.get("/sales/reports/top-products", { params: { start, end } }),
-  getInventoryUsage: () => api.get("/sales/reports/inventory-usage"),
-
-  // ✅ NEW: Get sales performance by user
-  getUserPerformance: () => api.get("/sales/reports/user-performance"), // <-- ADDED
+  getSalesSummary: (period: 'day' | 'week' | 'month' | 'year') =>
+    api.get("/sales/reports/sales-by-period", { params: { period } }),
+  getProfitsSummary: (period: 'day' | 'week' | 'month' | 'year') =>
+    api.get("/sales/reports/profit-loss", { params: { period } }),
+  
+  // Customer and Inventory
+  getCustomersDebt: () => api.get("/sales/reports/outstanding-balances"),
+  getInventory: () => api.get("/sales/reports/enhanced-inventory"),
 };
 
 export default api;

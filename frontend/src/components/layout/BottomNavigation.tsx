@@ -30,6 +30,8 @@ const navigationItems = [
   },
 ];
 
+
+
 export function BottomNavigation() {
   const location = useLocation();
 
@@ -60,6 +62,8 @@ export function BottomNavigation() {
           );
         })}
       </div>
+      
+
     </nav>
   );
 }

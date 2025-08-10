@@ -7,13 +7,15 @@ import authRoutes from './routes/auth';
 import profileRoutes from './routes/profile';
 import inventoryRouter from './routes/inventory';
 import salesRouter from './routes/sales';
+import reportsRouter from './routes/reports';
 
 
 
 const app = express();
 
-const allowedOrigin = 'http://13.49.240.213';
-
+const allowedOrigin = [
+  'http://localhost:8080',
+];
 const corsOptions = {
   origin: allowedOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -31,5 +33,6 @@ app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 app.use('/inventory', inventoryRouter);
 app.use('/sales', salesRouter);
+app.use('/sales/reports', reportsRouter);
 
 export default app;
