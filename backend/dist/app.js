@@ -12,9 +12,11 @@ const profile_1 = __importDefault(require("./routes/profile"));
 const inventory_1 = __importDefault(require("./routes/inventory"));
 const sales_1 = __importDefault(require("./routes/sales"));
 const reports_1 = __importDefault(require("./routes/reports"));
+const dailyReports_1 = __importDefault(require("./routes/dailyReports"));
 const app = (0, express_1.default)();
 const allowedOrigin = [
     'http://localhost:8080',
+    'http://localhost:8081',
 ];
 const corsOptions = {
     origin: allowedOrigin,
@@ -33,4 +35,5 @@ app.use('/profile', profile_1.default);
 app.use('/inventory', inventory_1.default);
 app.use('/sales', sales_1.default);
 app.use('/sales/reports', reports_1.default);
+app.use('/daily-reports', dailyReports_1.default);
 exports.default = app;

@@ -131,6 +131,31 @@ export const reportsAPI = {
   // Customer and Inventory
   getCustomersDebt: () => api.get("/sales/reports/outstanding-balances"),
   getInventory: () => api.get("/sales/reports/enhanced-inventory"),
+  
+  // Additional endpoints
+  getInventoryValuation: () => api.get("/sales/reports/inventory-valuation"),
+  getCashFlow: (start?: string, end?: string) =>
+    api.get("/sales/reports/cash-flow", { params: { start, end } }),
+  getCustomerAnalysis: (start?: string, end?: string) =>
+    api.get("/sales/reports/customer-analysis", { params: { start, end } }),
+  getUserPerformance: () => api.get("/sales/reports/user-performance"),
+  getInventoryUsage: () => api.get("/sales/reports/inventory-usage"),
+};
+
+// Daily Reports API
+export const dailyReportsAPI = {
+  getStatus: () => api.get("/daily-reports/status"),
+  triggerReport: (recipientEmail?: string) => 
+    api.post("/daily-reports/trigger", { recipientEmail }),
+  testEmail: (recipientEmail: string) => 
+    api.post("/daily-reports/test-email", { recipientEmail }),
+  configureEmail: (config: { emailUser: string; emailPassword: string; emailService: string }) => 
+    api.post("/daily-reports/configure", config),
+  getConfiguration: () => api.get("/daily-reports/configuration"),
+  downloadReport: (date: string) => 
+    api.get(`/daily-reports/download/${date}`, { responseType: 'blob' }),
+  previewReport: (date: string) => 
+    api.get(`/daily-reports/preview/${date}`, { responseType: 'blob' }),
 };
 
 export default api;

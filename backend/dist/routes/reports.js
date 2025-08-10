@@ -614,4 +614,59 @@ router.get("/cash-flow", authMiddleware_1.authenticateToken, async (req, res) =>
         res.status(500).json({ error: "Server error" });
     }
 });
+// ✅ 12. GET /reports/inventory-projections
+router.get("/inventory-projections", authMiddleware_1.authenticateToken, async (req, res) => {
+    try {
+        const inventory = await prisma.inventoryItem.findMany();
+        let totalProjectedRevenue = 0;
+        let totalProjectedCost = 0;
+        const itemProjections = [];
+        inventory.forEach(item => {
+            if (item.sellPrice && item.basePrice && item.quantity > 0) {
+                const projectedRevenue = item.quantity * item.sellPrice;
+                const projectedCost = item.quantity * item.basePrice;
+                const projectedProfit = projectedRevenue - projectedCost;
+                const profitMargin = projectedRevenue > 0 ? (projectedProfit / projectedRevenue) * 100 : 0;
+                totalProjectedRevenue += projectedRevenue;
+                totalProjectedCost += projectedCost;
+                itemProjections.push({
+                    name: item.name,
+                    category: item.category || 'General',
+                    totalQuantity: item.quantity,
+                    totalRevenue: projectedRevenue,
+                    totalCost: projectedCost,
+                    totalProfit: projectedProfit,
+                    profitMargin,
+                    averagePrice: item.sellPrice,
+                    averageCost: item.basePrice,
+                });
+            }
+        });
+        const netProjectedProfit = totalProjectedRevenue - totalProjectedCost;
+        const overallProfitMargin = totalProjectedRevenue > 0 ? (netProjectedProfit / totalProjectedRevenue) * 100 : 0;
+        // Sort by projected profit
+        const topProjections = itemProjections
+            .sort((a, b) => b.totalProfit - a.totalProfit)
+            .slice(0, 15);
+        const leastProjections = itemProjections
+            .sort((a, b) => a.totalProfit - b.totalProfit)
+            .slice(0, 15);
+        res.json({
+            summary: {
+                totalRevenue: totalProjectedRevenue,
+                totalCost: totalProjectedCost,
+                totalProfit: netProjectedProfit,
+                profitMargin: overallProfitMargin,
+                numberOfItems: itemProjections.length,
+            },
+            topPerformers: topProjections,
+            leastProfitable: leastProjections,
+            categoryBreakdown: [],
+        });
+    }
+    catch (error) {
+        console.error("Error fetching inventory projections:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
 exports.default = router;

@@ -97,7 +97,7 @@ export default function CustomerManagement() {
 
   // Fetch customers with improved configuration
   const { 
-    data: customers = [], 
+    data: customersResponse, 
     isLoading, 
     error,
     refetch,
@@ -109,7 +109,7 @@ export default function CustomerManagement() {
       try {
         const response = await customersAPI.getAll();
         console.log('Customers response:', response);
-        return response.data || [];
+        return response;
       } catch (error) {
         console.error('Error fetching customers:', error);
         throw error;
@@ -121,6 +121,10 @@ export default function CustomerManagement() {
     refetchOnWindowFocus: false,
     refetchOnMount: true,
   });
+
+  // Extract customers data safely
+  const customers = Array.isArray(customersResponse?.data) ? customersResponse.data : 
+                   Array.isArray(customersResponse) ? customersResponse : [];
 
   // Ensure query is executed when component mounts
   useEffect(() => {

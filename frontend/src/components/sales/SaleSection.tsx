@@ -19,6 +19,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -92,8 +93,10 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
   });
 
   // Extract data safely
-  const customers = Array.isArray(customersResponse?.data) ? customersResponse.data : [];
-  const inventory = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : [];
+  const customers = Array.isArray(customersResponse?.data) ? customersResponse.data : 
+                   Array.isArray(customersResponse) ? customersResponse : [];
+  const inventory = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : 
+                   Array.isArray(inventoryResponse) ? inventoryResponse : [];
 
   // Create sale mutation
   const createSaleMutation = useMutation({
@@ -302,6 +305,9 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Sale</DialogTitle>
+          <DialogDescription>
+            Add items to the sale and complete the transaction.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">

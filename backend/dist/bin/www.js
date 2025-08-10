@@ -4,8 +4,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const dotenv_1 = __importDefault(require("dotenv"));
-dotenv_1.default.config();
 const app_js_1 = __importDefault(require("../app.js"));
 const http_1 = __importDefault(require("http"));
 // Use PORT from .env or default to 3000 for local

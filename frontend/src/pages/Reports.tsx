@@ -18,7 +18,11 @@ import {
   Calendar,
   BarChart3,
   Target,
-  Receipt
+  Receipt,
+  CreditCard,
+  UserCheck,
+  Activity,
+  AlertTriangle
 } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 
@@ -50,6 +54,13 @@ interface ProfitLossData {
   summary: ProfitLossSummary;
   topPerformers: ProfitLossItem[];
   leastProfitable: ProfitLossItem[];
+  categoryBreakdown: Array<{
+    name: string;
+    totalRevenue: number;
+    totalCost: number;
+    totalProfit: number;
+    itemCount: number;
+  }>;
 }
 
 interface TopProductItem {
@@ -84,37 +95,145 @@ interface InventoryData {
 }
 
 interface SalesSummaryData {
-  totalSales?: number;
-  totalPaid?: number;
-  outstandingAmount?: number;
-  numberOfSales?: number;
-  netProfit?: number;
-  profitMargin?: number;
-  collectionRate?: number;
-  salesByHour?: Array<{ hour: string; sales: number }>;
-  salesByDay?: Array<{ day: string; sales: number }>;
-  topItems?: Array<{ name: string; quantity: number; revenue: number; cost: number; profit: number }>;
-  recentSales?: Array<{
+  period: { start: Date; end: Date };
+  summary: {
+    totalSales: number;
+    totalPaid: number;
+    totalDiscount: number;
+    totalCost: number;
+    grossProfit: number;
+    netProfit: number;
+    profitMargin: number;
+    numberOfSales: number;
+    averageOrderValue: number;
+    collectionRate: number;
+    outstandingAmount: number;
+  };
+  salesByHour: Array<{ hour: number; sales: number; orders: number }>;
+  salesByDay: Array<{ day: string; sales: number; orders: number }>;
+  topItems: Array<{ name: string; quantity: number; revenue: number; cost: number; profit: number }>;
+  recentSales: Array<{
     id: number;
     customer: string;
     amount: number;
+    paid: number;
+    discount: number;
     paymentType: string;
     date: string;
-    items: Array<{ quantity: number; name: string }>;
+    items: Array<{ quantity: number; name: string; price: number }>;
   }>;
 }
 
 interface LossesData {
   summary: {
-    totalLoss: number;
-    numberOfLossItems: number;
-    numberOfSales: number;
+    highRiskItems: number;
+    wasteRiskItems: number;
+    expiryRiskItems: number;
+    totalPotentialLoss: number;
   };
-  lossItems: ProfitLossItem[];
+  items: Array<{
+    id: string;
+    name: string;
+    category: string;
+    currentStock: number;
+    unit: string;
+    potentialLoss: number;
+    riskType: string;
+    recommendations: string[];
+  }>;
+}
+
+interface InventoryValuationData {
+  summary: {
+    totalItems: number;
+    totalValue: number;
+    totalPotentialValue: number;
+    totalProfitPotential: number;
+    lowStockItems: number;
+    outOfStockItems: number;
+    highValueItems: number;
+  };
+  items: Array<{
+    id: number;
+    name: string;
+    category: string;
+    subtype: string | null;
+    currentStock: number;
+    unit: string;
+    basePrice: number;
+    sellPrice: number;
+    limitPrice: number;
+    currentValue: number;
+    potentialValue: number;
+    profitPotential: number;
+    profitMargin: number;
+    lowStockAlert: boolean;
+    salesVelocity: number;
+    daysUntilStockout: number;
+    turnoverRate: number;
+    totalSold: number;
+    lastUpdated: string;
+  }>;
+}
+
+interface CashFlowData {
+  period: { start: Date; end: Date };
+  summary: {
+    totalRevenue: number;
+    totalCollected: number;
+    totalOutstanding: number;
+    totalDiscounts: number;
+    totalCost: number;
+    grossProfit: number;
+    netProfit: number;
+    collectionRate: number;
+    outstandingRate: number;
+  };
+  paymentMethods: Array<{
+    method: string;
+    count: number;
+    total: number;
+    collected: number;
+    outstanding: number;
+    collectionRate: number;
+  }>;
+  dailyCashFlow: Array<{
+    date: string;
+    revenue: number;
+    collected: number;
+    outstanding: number;
+  }>;
+}
+
+interface CustomerAnalysisData {
+  customers: Array<{
+    name: string;
+    numberOfOrders: number;
+    totalSpent: number;
+    averageOrderValue: number;
+  }>;
+  totalCustomers: number;
+  activeCustomers: number;
+}
+
+interface UserPerformanceData {
+  userId: string;
+  name: string;
+  email: string;
+  totalSales: number;
+  totalPaid: number;
+  saleCount: number;
+}
+
+interface InventoryUsageData {
+  itemId: string;
+  name: string;
+  totalUsed: number;
+  currentStock: number;
 }
 
 export const Reports = () => {
-  const [selectedReport, setSelectedReport] = useState<'actual-profits' | 'inventory-projections' | 'losses' | 'most-sold' | 'customers-debt' | 'sales' | 'profits-summary' | 'inventory'>('sales');
+  const [selectedReport, setSelectedReport] = useState<'actual-profits' | 'inventory-projections' | 'losses' | 'most-sold' | 'customers-debt' | 'sales' | 'profits-summary' | 'inventory' | 'inventory-valuation' | 'cash-flow' | 'customer-analysis' | 'user-performance' | 'inventory-usage'>('sales');
   const [selectedPeriod, setSelectedPeriod] = useState<'day' | 'week' | 'month' | 'year'>('week');
   const [startDate, setStartDate] = useState(format(subDays(new Date(), 7), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -168,8 +287,41 @@ export const Reports = () => {
     enabled: selectedReport === 'inventory'
   });
 
+  // New queries for additional reports
+  const { data: inventoryValuation, isLoading: inventoryValuationLoading } = useQuery<InventoryValuationData>({
+    queryKey: ['inventory-valuation'],
+    queryFn: () => reportsAPI.getInventoryValuation().then(res => res.data),
+    enabled: selectedReport === 'inventory-valuation'
+  });
+
+  const { data: cashFlow, isLoading: cashFlowLoading } = useQuery<CashFlowData>({
+    queryKey: ['cash-flow', startDate, endDate],
+    queryFn: () => reportsAPI.getCashFlow(startDate, endDate).then(res => res.data),
+    enabled: selectedReport === 'cash-flow'
+  });
+
+  const { data: customerAnalysis, isLoading: customerAnalysisLoading } = useQuery<CustomerAnalysisData>({
+    queryKey: ['customer-analysis', startDate, endDate],
+    queryFn: () => reportsAPI.getCustomerAnalysis(startDate, endDate).then(res => res.data),
+    enabled: selectedReport === 'customer-analysis'
+  });
+
+  const { data: userPerformance, isLoading: userPerformanceLoading } = useQuery<UserPerformanceData[]>({
+    queryKey: ['user-performance'],
+    queryFn: () => reportsAPI.getUserPerformance().then(res => res.data),
+    enabled: selectedReport === 'user-performance'
+  });
+
+  const { data: inventoryUsage, isLoading: inventoryUsageLoading } = useQuery<InventoryUsageData[]>({
+    queryKey: ['inventory-usage'],
+    queryFn: () => reportsAPI.getInventoryUsage().then(res => res.data),
+    enabled: selectedReport === 'inventory-usage'
+  });
+
   const isLoading = actualProfitsLoading || inventoryProjectionsLoading || lossesLoading || mostSoldLoading || 
-                    customersDebtLoading || salesLoading || profitsSummaryLoading || inventoryLoading;
+                    customersDebtLoading || salesLoading || profitsSummaryLoading || inventoryLoading ||
+                    inventoryValuationLoading || cashFlowLoading || customerAnalysisLoading || 
+                    userPerformanceLoading || inventoryUsageLoading;
 
   // Handle period selection
   const handlePeriodChange = (period: 'day' | 'week' | 'month' | 'year') => {
@@ -275,10 +427,50 @@ export const Reports = () => {
             <Package className="h-4 w-4 mr-2" />
             Inventory
           </Button>
+          <Button
+            variant={selectedReport === 'inventory-valuation' ? "default" : "outline"}
+            onClick={() => setSelectedReport('inventory-valuation')}
+            className="capitalize"
+          >
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Inventory Valuation
+          </Button>
+          <Button
+            variant={selectedReport === 'cash-flow' ? "default" : "outline"}
+            onClick={() => setSelectedReport('cash-flow')}
+            className="capitalize"
+          >
+            <CreditCard className="h-4 w-4 mr-2" />
+            Cash Flow
+          </Button>
+          <Button
+            variant={selectedReport === 'customer-analysis' ? "default" : "outline"}
+            onClick={() => setSelectedReport('customer-analysis')}
+            className="capitalize"
+          >
+            <Users className="h-4 w-4 mr-2" />
+            Customer Analysis
+          </Button>
+          <Button
+            variant={selectedReport === 'user-performance' ? "default" : "outline"}
+            onClick={() => setSelectedReport('user-performance')}
+            className="capitalize"
+          >
+            <UserCheck className="h-4 w-4 mr-2" />
+            User Performance
+          </Button>
+          <Button
+            variant={selectedReport === 'inventory-usage' ? "default" : "outline"}
+            onClick={() => setSelectedReport('inventory-usage')}
+            className="capitalize"
+          >
+            <Activity className="h-4 w-4 mr-2" />
+            Inventory Usage
+          </Button>
         </div>
 
         {/* Date Range Controls */}
-        {(selectedReport === 'actual-profits' || selectedReport === 'losses' || selectedReport === 'most-sold') && (
+        {(selectedReport === 'actual-profits' || selectedReport === 'losses' || selectedReport === 'most-sold' || selectedReport === 'cash-flow' || selectedReport === 'customer-analysis') && (
           <Card>
             <CardHeader>
               <CardTitle>Date Range</CardTitle>
@@ -350,50 +542,82 @@ export const Reports = () => {
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
                   <div className="text-2xl font-bold text-blue-600">
-                    KSH {sales.totalSales?.toLocaleString() || '0'}
+                    KSH {sales.summary?.totalSales?.toLocaleString() || '0'}
                   </div>
                   <div className="text-sm text-blue-600">Total Sales</div>
                 </div>
                 <div className="text-center p-4 bg-green-50 rounded-lg">
                   <div className="text-2xl font-bold text-green-600">
-                    KSH {sales.totalPaid?.toLocaleString() || '0'}
+                    KSH {sales.summary?.totalPaid?.toLocaleString() || '0'}
                   </div>
                   <div className="text-sm text-green-600">Total Collected</div>
                 </div>
                 <div className="text-center p-4 bg-red-50 rounded-lg">
                   <div className="text-2xl font-bold text-red-600">
-                    KSH {sales.outstandingAmount?.toLocaleString() || '0'}
+                    KSH {sales.summary?.outstandingAmount?.toLocaleString() || '0'}
                   </div>
                   <div className="text-sm text-red-600">Outstanding</div>
                 </div>
                 <div className="text-center p-4 bg-purple-50 rounded-lg">
                   <div className="text-2xl font-bold text-purple-600">
-                    {sales.numberOfSales || '0'}
+                    {sales.summary?.numberOfSales || '0'}
                   </div>
                   <div className="text-sm text-purple-600">Transactions</div>
                 </div>
               </div>
 
               {/* Profit Summary */}
-              {sales.netProfit !== undefined && (
+              {sales.summary?.netProfit !== undefined && (
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div className="text-center p-4 bg-green-50 rounded-lg">
                     <div className="text-2xl font-bold text-green-600">
-                      KSH {sales.netProfit?.toLocaleString() || '0'}
+                      KSH {sales.summary?.netProfit?.toLocaleString() || '0'}
                     </div>
                     <div className="text-sm text-green-600">Net Profit</div>
                   </div>
                   <div className="text-center p-4 bg-blue-50 rounded-lg">
                     <div className="text-2xl font-bold text-blue-600">
-                      {sales.profitMargin?.toFixed(1) || '0'}%
+                      {sales.summary?.profitMargin?.toFixed(1) || '0'}%
                     </div>
                     <div className="text-sm text-blue-600">Profit Margin</div>
                   </div>
                   <div className="text-center p-4 bg-orange-50 rounded-lg">
                     <div className="text-2xl font-bold text-orange-600">
-                      {sales.collectionRate?.toFixed(1) || '0'}%
+                      {sales.summary?.collectionRate?.toFixed(1) || '0'}%
                     </div>
                     <div className="text-sm text-orange-600">Collection Rate</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Sales by Hour */}
+              {sales.salesByHour && sales.salesByHour.length > 0 && (
+                <div className="space-y-3 mb-6">
+                  <h3 className="text-lg font-semibold">Sales by Hour</h3>
+                  <div className="grid grid-cols-6 md:grid-cols-12 gap-2">
+                    {sales.salesByHour.map((hourData, index) => (
+                      <div key={index} className="text-center p-2 bg-muted rounded">
+                        <div className="text-xs font-medium">{hourData.hour}:00</div>
+                        <div className="text-sm text-blue-600">KSH {hourData.sales?.toLocaleString() || '0'}</div>
+                        <div className="text-xs text-muted-foreground">{hourData.orders || 0} orders</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Sales by Day */}
+              {sales.salesByDay && sales.salesByDay.length > 0 && (
+                <div className="space-y-3 mb-6">
+                  <h3 className="text-lg font-semibold">Sales by Day</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+                    {sales.salesByDay.map((dayData, index) => (
+                      <div key={index} className="text-center p-3 bg-muted rounded">
+                        <div className="text-sm font-medium">{dayData.day}</div>
+                        <div className="text-lg text-blue-600">KSH {dayData.sales?.toLocaleString() || '0'}</div>
+                        <div className="text-xs text-muted-foreground">{dayData.orders || 0} orders</div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -435,14 +659,14 @@ export const Reports = () => {
                         <div>
                           <div className="font-medium">{sale.customer}</div>
                           <div className="text-sm text-muted-foreground">
-                            {sale.items.map(item => `${item.quantity} ${item.name}`).join(', ')}
+                            {sale.items.map(item => `${item.quantity} ${item.name} @ KSH ${item.price}`).join(', ')}
                           </div>
                         </div>
                       </div>
                       <div className="text-right">
                         <div className="font-semibold text-green-600">KSH {sale.amount?.toLocaleString()}</div>
                         <div className="text-sm text-muted-foreground">
-                          {sale.paymentType} • {format(new Date(sale.date), 'MMM dd, yyyy')}
+                          Paid: KSH {sale.paid?.toLocaleString()} • {sale.paymentType} • {format(new Date(sale.date), 'MMM dd, yyyy')}
                         </div>
                       </div>
                     </div>
@@ -592,41 +816,47 @@ export const Reports = () => {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="text-center p-4 bg-red-50 rounded-lg">
                   <div className="text-2xl font-bold text-red-600">
-                    KSH {losses.summary?.totalLoss?.toLocaleString() || '0'}
+                    KSH {losses.summary?.totalPotentialLoss?.toLocaleString() || '0'}
                   </div>
-                  <div className="text-sm text-red-600">Total Loss</div>
+                  <div className="text-sm text-red-600">Total Potential Loss</div>
                 </div>
                 <div className="text-center p-4 bg-orange-50 rounded-lg">
                   <div className="text-2xl font-bold text-orange-600">
-                    {losses.summary?.numberOfLossItems || '0'}
+                    {losses.summary?.highRiskItems || '0'}
                   </div>
-                  <div className="text-sm text-orange-600">Loss Items</div>
+                  <div className="text-sm text-orange-600">High Risk Items</div>
                 </div>
                 <div className="text-center p-4 bg-yellow-50 rounded-lg">
                   <div className="text-2xl font-bold text-yellow-600">
-                    {losses.summary?.numberOfSales || '0'}
+                    {losses.summary?.wasteRiskItems || '0'}
                   </div>
-                  <div className="text-sm text-yellow-600">Total Sales</div>
+                  <div className="text-sm text-yellow-600">Waste Risk Items</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {losses.summary?.expiryRiskItems || '0'}
+                  </div>
+                  <div className="text-sm text-purple-600">Expiry Risk Items</div>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <h3 className="text-lg font-semibold">Items Sold at Loss</h3>
-                {losses.lossItems?.slice(0, 20).map((item: ProfitLossItem, index: number) => (
+                <h3 className="text-lg font-semibold">Items at Risk</h3>
+                {losses.items?.slice(0, 20).map((item, index) => (
                   <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
                     <div className="flex items-center gap-3">
                       <Badge variant="destructive">{index + 1}</Badge>
                       <div>
                         <div className="font-medium">{item.name}</div>
                         <div className="text-sm text-muted-foreground">
-                          {item.totalQuantity} units • Sold: KSH {item.averagePrice?.toFixed(2)} • Base: KSH {item.averageCost?.toFixed(2)}
+                          {item.riskType} • Current Stock: {item.currentStock} {item.unit}
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-red-600">KSH {item.totalProfit?.toLocaleString()}</div>
+                      <div className="font-semibold text-red-600">KSH {item.potentialLoss?.toLocaleString()}</div>
                       <div className="text-sm text-muted-foreground">
-                        {item.profitMargin?.toFixed(1)}% margin
+                        Recommendations: {item.recommendations.join(', ')}
                       </div>
                     </div>
                   </div>
@@ -873,6 +1103,365 @@ export const Reports = () => {
                         <div className="text-sm text-muted-foreground">
                           Cost: KSH {item.currentCost?.toLocaleString() || '0'}
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Inventory Valuation Report */}
+        {selectedReport === 'inventory-valuation' && inventoryValuation && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-purple-500" />
+                Inventory Valuation Report
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {inventoryValuation.summary?.totalItems || '0'}
+                  </div>
+                  <div className="text-sm text-purple-600">Total Items</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    KSH {inventoryValuation.summary?.totalValue?.toLocaleString() || '0'}
+                  </div>
+                  <div className="text-sm text-blue-600">Current Value</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    KSH {inventoryValuation.summary?.totalPotentialValue?.toLocaleString() || '0'}
+                  </div>
+                  <div className="text-sm text-green-600">Potential Value</div>
+                </div>
+                <div className="text-center p-4 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">
+                    KSH {inventoryValuation.summary?.totalProfitPotential?.toLocaleString() || '0'}
+                  </div>
+                  <div className="text-sm text-orange-600">Profit Potential</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="text-center p-4 bg-red-50 rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">
+                    {inventoryValuation.summary?.lowStockItems || '0'}
+                  </div>
+                  <div className="text-sm text-red-600">Low Stock Items</div>
+                </div>
+                <div className="text-center p-4 bg-yellow-50 rounded-lg">
+                  <div className="text-2xl font-bold text-yellow-600">
+                    {inventoryValuation.summary?.outOfStockItems || '0'}
+                  </div>
+                  <div className="text-sm text-yellow-600">Out of Stock</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    {inventoryValuation.summary?.highValueItems || '0'}
+                  </div>
+                  <div className="text-sm text-green-600">High Value Items</div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Inventory Items</h3>
+                {inventoryValuation.items?.slice(0, 20).map((item, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Badge variant={item.lowStockAlert ? "destructive" : "secondary"}>{index + 1}</Badge>
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {item.category} • {item.currentStock} {item.unit} • Base: KSH {item.basePrice} • Sell: KSH {item.sellPrice}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold text-blue-600">KSH {item.currentValue?.toLocaleString() || '0'}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Profit: KSH {item.profitPotential?.toLocaleString()} • Margin: {item.profitMargin?.toFixed(1)}%
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Velocity: {item.salesVelocity?.toFixed(2)} • Days to Stockout: {item.daysUntilStockout?.toFixed(0)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Cash Flow Report */}
+        {selectedReport === 'cash-flow' && cashFlow && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CreditCard className="h-5 w-5 text-green-500" />
+                Cash Flow Report
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    KSH {cashFlow.summary?.totalRevenue?.toLocaleString() || '0'}
+                  </div>
+                  <div className="text-sm text-green-600">Total Revenue</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    KSH {cashFlow.summary?.totalCollected?.toLocaleString() || '0'}
+                  </div>
+                  <div className="text-sm text-blue-600">Total Collected</div>
+                </div>
+                <div className="text-center p-4 bg-red-50 rounded-lg">
+                  <div className="text-2xl font-bold text-red-600">
+                    KSH {cashFlow.summary?.totalOutstanding?.toLocaleString() || '0'}
+                  </div>
+                  <div className="text-sm text-red-600">Total Outstanding</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {cashFlow.summary?.collectionRate?.toFixed(1) || '0'}%
+                  </div>
+                  <div className="text-sm text-purple-600">Collection Rate</div>
+                </div>
+              </div>
+
+              {/* Daily Cash Flow */}
+              {cashFlow.dailyCashFlow && cashFlow.dailyCashFlow.length > 0 && (
+                <div className="space-y-3 mb-6">
+                  <h3 className="text-lg font-semibold">Daily Cash Flow</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+                    {cashFlow.dailyCashFlow.slice(0, 7).map((dayData, index) => (
+                      <div key={index} className="text-center p-3 bg-muted rounded">
+                        <div className="text-sm font-medium">{format(new Date(dayData.date), 'MMM dd')}</div>
+                        <div className="text-lg text-green-600">KSH {dayData.revenue?.toLocaleString() || '0'}</div>
+                        <div className="text-sm text-blue-600">Collected: KSH {dayData.collected?.toLocaleString() || '0'}</div>
+                        <div className="text-xs text-red-600">Outstanding: KSH {dayData.outstanding?.toLocaleString() || '0'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Payment Methods</h3>
+                {cashFlow.paymentMethods?.slice(0, 10).map((method, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary">{index + 1}</Badge>
+                      <div>
+                        <div className="font-medium">{method.method}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {method.count} transactions • Total: KSH {method.total?.toLocaleString() || '0'}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold text-blue-600">KSH {method.collected?.toLocaleString() || '0'}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Outstanding: KSH {method.outstanding?.toLocaleString() || '0'}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Collection Rate: {method.collectionRate?.toFixed(1) || '0'}%
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Customer Analysis Report */}
+        {selectedReport === 'customer-analysis' && customerAnalysis && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-orange-500" />
+                Customer Analysis Report
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center p-4 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {customerAnalysis.totalCustomers || '0'}
+                  </div>
+                  <div className="text-sm text-orange-600">Total Customers</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {customerAnalysis.activeCustomers || '0'}
+                  </div>
+                  <div className="text-sm text-blue-600">Active Customers</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    KSH {customerAnalysis.customers.reduce((sum, c) => sum + c.totalSpent, 0).toLocaleString()}
+                  </div>
+                  <div className="text-sm text-green-600">Total Spent</div>
+                </div>
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {customerAnalysis.customers.length || 0}
+                  </div>
+                  <div className="text-sm text-purple-600">Customers in Period</div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Customer Overview</h3>
+                {customerAnalysis.customers.slice(0, 20).map((customer, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary">{index + 1}</Badge>
+                      <div>
+                        <div className="font-medium">{customer.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          Orders: {customer.numberOfOrders}, Total Spent: KSH {customer.totalSpent?.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold text-blue-600">KSH {customer.averageOrderValue?.toLocaleString() || '0'}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Avg. Order Value
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* User Performance Report */}
+        {selectedReport === 'user-performance' && userPerformance && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserCheck className="h-5 w-5 text-purple-500" />
+                User Performance Report
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {userPerformance.length || 0}
+                  </div>
+                  <div className="text-sm text-purple-600">Total Users</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {userPerformance.reduce((sum, user) => sum + user.totalSales, 0).toLocaleString()}
+                  </div>
+                  <div className="text-sm text-blue-600">Total Sales</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    {userPerformance.reduce((sum, user) => sum + user.saleCount, 0).toLocaleString()}
+                  </div>
+                  <div className="text-sm text-green-600">Total Sales Count</div>
+                </div>
+                <div className="text-center p-4 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {userPerformance.reduce((sum, user) => sum + user.totalPaid, 0).toLocaleString()}
+                  </div>
+                  <div className="text-sm text-orange-600">Total Paid</div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">User Performance</h3>
+                {userPerformance.slice(0, 20).map((user, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary">{index + 1}</Badge>
+                      <div>
+                        <div className="font-medium">{user.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          Email: {user.email}, Total Sales: {user.totalSales?.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold text-blue-600">Sales Count: {user.saleCount}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Total Paid: KSH {user.totalPaid?.toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Inventory Usage Report */}
+        {selectedReport === 'inventory-usage' && inventoryUsage && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-purple-500" />
+                Inventory Usage Report
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center p-4 bg-purple-50 rounded-lg">
+                  <div className="text-2xl font-bold text-purple-600">
+                    {inventoryUsage.length || 0}
+                  </div>
+                  <div className="text-sm text-purple-600">Total Items Tracked</div>
+                </div>
+                <div className="text-center p-4 bg-blue-50 rounded-lg">
+                  <div className="text-2xl font-bold text-blue-600">
+                    {inventoryUsage.reduce((sum, item) => sum + item.totalUsed, 0).toLocaleString()}
+                  </div>
+                  <div className="text-sm text-blue-600">Total Units Used</div>
+                </div>
+                <div className="text-center p-4 bg-green-50 rounded-lg">
+                  <div className="text-2xl font-bold text-green-600">
+                    {inventoryUsage.reduce((sum, item) => sum + item.currentStock, 0).toLocaleString()}
+                  </div>
+                  <div className="text-sm text-green-600">Total Current Stock</div>
+                </div>
+                <div className="text-center p-4 bg-orange-50 rounded-lg">
+                  <div className="text-2xl font-bold text-orange-600">
+                    {inventoryUsage.length || 0}
+                  </div>
+                  <div className="text-sm text-orange-600">Items Tracked</div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold">Inventory Usage Details</h3>
+                {inventoryUsage.slice(0, 20).map((item, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary">{index + 1}</Badge>
+                      <div>
+                        <div className="font-medium">{item.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          Item ID: {item.itemId}, Total Used: {item.totalUsed}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-semibold text-blue-600">Current Stock: {item.currentStock}</div>
+                      <div className="text-sm text-muted-foreground">
+                        Total Used: {item.totalUsed}
                       </div>
                     </div>
                   </div>

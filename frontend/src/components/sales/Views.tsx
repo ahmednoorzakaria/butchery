@@ -22,6 +22,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -127,7 +128,8 @@ export function Views({
   });
 
   // Extract sales data safely
-  const sales = Array.isArray(salesResponse?.data) ? salesResponse.data : [];
+  const sales = Array.isArray(salesResponse?.data) ? salesResponse.data : 
+                Array.isArray(salesResponse) ? salesResponse : [];
   
   // Filter sales based on search, date, and user
   const filteredSales = sales.filter((sale: Sale) => {
@@ -452,6 +454,9 @@ export function Views({
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Sale Details - #{selectedSale?.id}</DialogTitle>
+            <DialogDescription>
+              View detailed information about this sale transaction.
+            </DialogDescription>
           </DialogHeader>
 
           {selectedSale && (

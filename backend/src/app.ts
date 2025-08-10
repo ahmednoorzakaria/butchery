@@ -8,13 +8,13 @@ import profileRoutes from './routes/profile';
 import inventoryRouter from './routes/inventory';
 import salesRouter from './routes/sales';
 import reportsRouter from './routes/reports';
-
-
+import dailyReportsRouter from './routes/dailyReports';
 
 const app = express();
 
 const allowedOrigin = [
   'http://localhost:8080',
+  'http://localhost:8081',
 ];
 const corsOptions = {
   origin: allowedOrigin,
@@ -28,11 +28,13 @@ app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions)); // Preflight support
+
 //routes
 app.use('/auth', authRoutes);
 app.use('/profile', profileRoutes);
 app.use('/inventory', inventoryRouter);
 app.use('/sales', salesRouter);
 app.use('/sales/reports', reportsRouter);
+app.use('/daily-reports', dailyReportsRouter);
 
 export default app;

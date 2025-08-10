@@ -40,72 +40,99 @@ router.post("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
             error: "Payment type must be either 'CASH' or 'MPESA'"
         });
     }
-    let totalAmount = 0;
-    const saleItemsData = [];
-    for (const item of items) {
-        const inventory = await prisma.inventoryItem.findUnique({
-            where: { id: item.itemId },
-        });
-        if (!inventory || inventory.quantity < item.quantity) {
-            return res
-                .status(400)
-                .json({ error: `Insufficient stock for item ${item.itemId}` });
-        }
-        // Validate sale price against limit price
-        if (inventory.limitPrice && item.price < inventory.limitPrice) {
-            return res
-                .status(400)
-                .json({
-                error: `Sale price (${item.price}) for item "${inventory.name}" cannot be lower than the limit price (${inventory.limitPrice})`
+    try {
+        // Use a transaction to ensure data consistency
+        const result = await prisma.$transaction(async (tx) => {
+            let totalAmount = 0;
+            const saleItemsData = [];
+            const inventoryUpdates = [];
+            // First, validate all items and prepare data
+            for (const item of items) {
+                const inventory = await tx.inventoryItem.findUnique({
+                    where: { id: item.itemId },
+                });
+                if (!inventory) {
+                    throw new Error(`Item with ID ${item.itemId} not found`);
+                }
+                if (inventory.quantity < item.quantity) {
+                    throw new Error(`Insufficient stock for item "${inventory.name}". Available: ${inventory.quantity}, Requested: ${item.quantity}`);
+                }
+                // Validate sale price against limit price
+                if (inventory.limitPrice && item.price < inventory.limitPrice) {
+                    throw new Error(`Sale price (${item.price}) for item "${inventory.name}" cannot be lower than the limit price (${inventory.limitPrice})`);
+                }
+                // Warn if sale price is significantly lower than default sell price
+                if (inventory.sellPrice && item.price < inventory.sellPrice * 0.8) {
+                    console.warn(`Warning: Sale price ${item.price} for item ${inventory.name} is significantly lower than default sell price ${inventory.sellPrice}`);
+                }
+                totalAmount += item.quantity * item.price;
+                saleItemsData.push({
+                    itemId: item.itemId,
+                    quantity: item.quantity,
+                    price: item.price,
+                });
+                // Store inventory update info
+                inventoryUpdates.push({
+                    itemId: item.itemId,
+                    quantity: item.quantity,
+                    currentStock: inventory.quantity,
+                    newStock: inventory.quantity - item.quantity
+                });
+            }
+            const netAmount = totalAmount - discount;
+            // Create the sale
+            const sale = await tx.sale.create({
+                data: {
+                    customerId,
+                    userId,
+                    totalAmount: netAmount,
+                    discount,
+                    paidAmount,
+                    paymentType,
+                    items: { create: saleItemsData },
+                },
+                include: { customer: true, user: true },
             });
-        }
-        // Warn if sale price is significantly lower than default sell price
-        if (inventory.sellPrice && item.price < inventory.sellPrice * 0.8) {
-            console.warn(`Warning: Sale price ${item.price} for item ${inventory.name} is significantly lower than default sell price ${inventory.sellPrice}`);
-        }
-        totalAmount += item.quantity * item.price;
-        saleItemsData.push({
-            itemId: item.itemId,
-            quantity: item.quantity,
-            price: item.price,
+            // Update inventory for all items
+            for (const update of inventoryUpdates) {
+                console.log(`Updating inventory for item ${update.itemId}: ${update.currentStock} -> ${update.newStock}`);
+                const updatedItem = await tx.inventoryItem.update({
+                    where: { id: update.itemId },
+                    data: { quantity: update.newStock },
+                });
+                console.log(`Inventory updated successfully: ${updatedItem.name} now has ${updatedItem.quantity} in stock`);
+                // Create transaction record
+                await tx.inventoryTransaction.create({
+                    data: {
+                        itemId: update.itemId,
+                        type: "STOCK_OUT",
+                        quantity: update.quantity,
+                    },
+                });
+            }
+            // Create customer transaction
+            const balance = paidAmount - netAmount;
+            await tx.customerTransaction.create({
+                data: {
+                    customerId,
+                    amount: balance,
+                    reason: "Sale",
+                    saleId: sale.id,
+                },
+            });
+            return { sale, inventoryUpdates };
+        });
+        console.log('Sale completed successfully with inventory updates:', result.inventoryUpdates);
+        res.status(201).json({ sale: result.sale, inventoryUpdates: result.inventoryUpdates });
+    }
+    catch (error) {
+        console.error('Error creating sale:', error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to create sale";
+        res.status(400).json({
+            error: errorMessage,
+            details: errorMessage
         });
     }
-    const netAmount = totalAmount - discount;
-    const sale = await prisma.sale.create({
-        data: {
-            customerId,
-            userId,
-            totalAmount: netAmount,
-            discount,
-            paidAmount,
-            paymentType,
-            items: { create: saleItemsData },
-        },
-        include: { customer: true, user: true },
-    });
-    for (const item of items) {
-        await prisma.inventoryItem.update({
-            where: { id: item.itemId },
-            data: { quantity: { decrement: item.quantity } },
-        });
-        await prisma.inventoryTransaction.create({
-            data: {
-                itemId: item.itemId,
-                type: "STOCK_OUT",
-                quantity: item.quantity,
-            },
-        });
-    }
-    const balance = paidAmount - netAmount;
-    await prisma.customerTransaction.create({
-        data: {
-            customerId,
-            amount: balance,
-            reason: "Sale",
-            saleId: sale.id,
-        },
-    });
-    res.status(201).json({ sale });
 });
 // Record Payment
 router.post("/customers/:id/payments", authMiddleware_1.authenticateToken, async (req, res) => {
@@ -1280,6 +1307,155 @@ router.get("/reports/cash-flow", authMiddleware_1.authenticateToken, async (req,
     catch (error) {
         console.error("Cash flow report error:", error);
         res.status(500).json({ error: "Server error" });
+    }
+});
+// Debug endpoint to check inventory status
+router.get("/debug/inventory/:itemId", async (req, res) => {
+    try {
+        const itemId = parseInt(req.params.itemId);
+        const item = await prisma.inventoryItem.findUnique({
+            where: { id: itemId },
+            include: {
+                transactions: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 10
+                }
+            }
+        });
+        if (!item) {
+            return res.status(404).json({ error: "Item not found" });
+        }
+        res.json({
+            item,
+            recentTransactions: item.transactions
+        });
+    }
+    catch (error) {
+        console.error('Error fetching inventory debug info:', error);
+        res.status(500).json({ error: "Failed to fetch inventory info" });
+    }
+});
+// Debug endpoint to list all inventory items
+router.get("/debug/inventory", async (req, res) => {
+    try {
+        const items = await prisma.inventoryItem.findMany({
+            include: {
+                transactions: {
+                    orderBy: { createdAt: 'desc' },
+                    take: 5
+                }
+            },
+            orderBy: { name: 'asc' }
+        });
+        res.json({
+            totalItems: items.length,
+            items: items.map(item => ({
+                id: item.id,
+                name: item.name,
+                quantity: item.quantity,
+                unit: item.unit,
+                basePrice: item.basePrice,
+                sellPrice: item.sellPrice,
+                limitPrice: item.limitPrice,
+                lowStockLimit: item.lowStockLimit,
+                lastUpdated: item.updatedAt,
+                recentTransactions: item.transactions.length
+            }))
+        });
+    }
+    catch (error) {
+        console.error('Error fetching inventory list:', error);
+        res.status(500).json({ error: "Failed to fetch inventory list" });
+    }
+});
+// Test endpoint for inventory updates (remove in production)
+router.post("/test-sale", async (req, res) => {
+    const { customerId, items, discount = 0, paidAmount, paymentType } = req.body;
+    if (!items || items.length === 0) {
+        return res.status(400).json({ error: "Items are required" });
+    }
+    try {
+        console.log('Test sale request:', { customerId, items, discount, paidAmount, paymentType });
+        // Use a transaction to ensure data consistency
+        const result = await prisma.$transaction(async (tx) => {
+            let totalAmount = 0;
+            const saleItemsData = [];
+            const inventoryUpdates = [];
+            // First, validate all items and prepare data
+            for (const item of items) {
+                const inventory = await tx.inventoryItem.findUnique({
+                    where: { id: item.itemId },
+                });
+                if (!inventory) {
+                    throw new Error(`Item with ID ${item.itemId} not found`);
+                }
+                console.log(`Item ${inventory.name}: current stock = ${inventory.quantity}, requested = ${item.quantity}`);
+                if (inventory.quantity < item.quantity) {
+                    throw new Error(`Insufficient stock for item "${inventory.name}". Available: ${inventory.quantity}, Requested: ${item.quantity}`);
+                }
+                totalAmount += item.quantity * item.price;
+                saleItemsData.push({
+                    itemId: item.itemId,
+                    quantity: item.quantity,
+                    price: item.price,
+                });
+                // Store inventory update info
+                inventoryUpdates.push({
+                    itemId: item.itemId,
+                    quantity: item.quantity,
+                    currentStock: inventory.quantity,
+                    newStock: inventory.quantity - item.quantity
+                });
+            }
+            const netAmount = totalAmount - discount;
+            // Create the sale
+            const sale = await tx.sale.create({
+                data: {
+                    customerId: customerId || 1, // Default customer if not provided
+                    userId: 1, // Default user
+                    totalAmount: netAmount,
+                    discount,
+                    paidAmount: paidAmount || netAmount,
+                    paymentType: paymentType || 'CASH',
+                    items: { create: saleItemsData },
+                },
+                include: { customer: true, user: true },
+            });
+            console.log('Sale created:', sale.id);
+            // Update inventory for all items
+            for (const update of inventoryUpdates) {
+                console.log(`Updating inventory for item ${update.itemId}: ${update.currentStock} -> ${update.newStock}`);
+                const updatedItem = await tx.inventoryItem.update({
+                    where: { id: update.itemId },
+                    data: { quantity: update.newStock },
+                });
+                console.log(`Inventory updated successfully: ${updatedItem.name} now has ${updatedItem.quantity} in stock`);
+                // Create transaction record
+                await tx.inventoryTransaction.create({
+                    data: {
+                        itemId: update.itemId,
+                        type: "STOCK_OUT",
+                        quantity: update.quantity,
+                    },
+                });
+            }
+            return { sale, inventoryUpdates };
+        });
+        console.log('Test sale completed successfully with inventory updates:', result.inventoryUpdates);
+        res.status(201).json({
+            success: true,
+            sale: result.sale,
+            inventoryUpdates: result.inventoryUpdates
+        });
+    }
+    catch (error) {
+        console.error('Error in test sale:', error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to create test sale";
+        res.status(400).json({
+            success: false,
+            error: errorMessage,
+            details: errorMessage
+        });
     }
 });
 exports.default = router;

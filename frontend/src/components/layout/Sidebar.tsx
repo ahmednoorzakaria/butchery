@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { Package, ShoppingCart, Users, BarChart3, User, Menu, Settings, ShoppingBag, HelpCircle } from "lucide-react";
+import { Package, ShoppingCart, Users, BarChart3, User, Menu, Settings, ShoppingBag, HelpCircle, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -9,6 +9,7 @@ const primaryItems = [
   { name: "Sales", href: "/sales", icon: ShoppingCart },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Reports", href: "/reports", icon: BarChart3 },
+  { name: "Daily Reports", href: "/daily-reports", icon: FileText },
   { name: "Account", href: "/account", icon: User },
 ];
 

@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import Dashboard from "./pages/Dashboard";
 import InventoryList from "./pages/InventoryList";
 import Reports from "./pages/Reports";
+import DailyReports from "./pages/DailyReports";
 import SalesList from "./pages/SalesList";
 import CustomersList from "./pages/CustomersList";
 import NotFound from "./pages/NotFound";
@@ -36,7 +37,12 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter
+        future={{
+          v7_startTransition: true,
+          v7_relativeSplatPath: true,
+        }}
+      >
         <Routes>
           <Route path="/login" element={<Login />} />
 
@@ -93,6 +99,14 @@ const App = () => (
             element={
               <ProtectedRoute allowedRoles={["ADMIN"]}>
                 <Reports />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/daily-reports"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <DailyReports />
               </ProtectedRoute>
             }
           />
