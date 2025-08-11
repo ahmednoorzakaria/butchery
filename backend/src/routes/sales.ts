@@ -1571,7 +1571,7 @@ router.post("/test-sale", async (req, res) => {
           userId: 1, // Default user
           totalAmount: netAmount,
           discount,
-          paidAmount: paidAmount || netAmount,
+          paidAmount: paidAmount !== undefined ? paidAmount : netAmount,
           paymentType: paymentType || 'CASH',
           items: { create: saleItemsData },
         },

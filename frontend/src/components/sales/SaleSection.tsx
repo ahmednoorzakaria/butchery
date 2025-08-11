@@ -73,7 +73,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
   const [selectedProduct, setSelectedProduct] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [discount, setDiscount] = useState(0);
-  const [paidAmount, setPaidAmount] = useState<number | null>(null);
+  const [paidAmount, setPaidAmount] = useState<number>(0); // Start with 0 for debt
   const [totalAmountInput, setTotalAmountInput] = useState("");
   const [priceInput, setPriceInput] = useState("");
   const [autoDiscount, setAutoDiscount] = useState(0); // New state for auto-calculated discount
@@ -128,7 +128,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
     setSelectedProduct("");
     setQuantity(1);
     setDiscount(0);
-    setPaidAmount(null);
+    setPaidAmount(0); // Reset to 0 for debt
     setTotalAmountInput("");
     setPriceInput("");
     setAutoDiscount(0); // Reset auto discount
@@ -187,10 +187,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
 
   const removeItemFromSale = (itemId: number) => {
     setSaleItems(saleItems.filter((item) => item.itemId !== itemId));
-    // Auto-update paidAmount if it was previously set to match net total
-    if (paidAmount === calculateNetTotal()) {
-      setPaidAmount(null); // This will trigger useEffect to recalculate
-    }
+    // paidAmount remains as user set it
   };
 
   const calculateSaleTotal = () => {
@@ -219,7 +216,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
         price: item.price,
       })),
       discount: discount,
-      paidAmount: paidAmount || calculateNetTotal(),
+      paidAmount: paidAmount, // Now always a number, 0 means full debt
       paymentType: paymentType,
     };
 
@@ -250,15 +247,8 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
 
   // Auto-calculate totals when saleItems or discount changes
   useEffect(() => {
-    // Auto-update paidAmount to match net total if it's not manually set
-    if (paidAmount === null) {
-      setPaidAmount(calculateNetTotal());
-    }
-    // Also update paidAmount if it was previously set to match the old net total
-    // and the difference is significant (more than 1 KSH)
-    else if (Math.abs(paidAmount - calculateNetTotal()) > 1) {
-      setPaidAmount(calculateNetTotal());
-    }
+    // paidAmount is now always a number starting at 0
+    // Users can manually change this to any amount they want
   }, [saleItems, discount]);
 
   // Auto-calculate quantity when both price and total amount are entered
@@ -558,10 +548,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     onChange={(e) => {
                       const newDiscount = Number(e.target.value);
                       setDiscount(newDiscount);
-                      // Auto-update paidAmount if it was previously set to match net total
-                      if (paidAmount === calculateNetTotal()) {
-                        setPaidAmount(calculateSaleTotal() - newDiscount);
-                      }
+                      // paidAmount remains as user set it
                     }}
                     className="w-32"
                     min="0"
@@ -590,11 +577,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     </Label>
                     <Input
                       type="number"
-                      value={
-                        paidAmount !== null && paidAmount !== undefined
-                          ? paidAmount
-                          : calculateNetTotal()
-                      }
+                      value={paidAmount}
                       onChange={(e) => {
                         const newPaidAmount = Number(e.target.value);
                         setPaidAmount(newPaidAmount);
@@ -602,11 +585,13 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                       }}
                       className="w-32"
                       min="0"
-                      max={calculateNetTotal()}
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Enter 0 to record as debt, or enter the actual amount paid
+                    </p>
                   </div>
 
-                  {paidAmount && paidAmount < calculateNetTotal() && (
+                  {(paidAmount === 0 || paidAmount < calculateNetTotal()) && (
                     <div className="bg-warning/10 border border-warning/20 rounded p-3">
                       <div className="flex justify-between text-sm">
                         <span className="text-warning-foreground">
@@ -620,8 +605,10 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                         </span>
                       </div>
                       <p className="text-xs text-warning-foreground mt-1">
-                        This sale will be recorded as credit/debt for the
-                        customer
+                        {paidAmount === 0 
+                          ? "This sale will be recorded as full debt for the customer"
+                          : "This sale will be recorded as partial debt for the customer"
+                        }
                       </p>
                     </div>
                   )}
