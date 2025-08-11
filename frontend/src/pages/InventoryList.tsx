@@ -89,7 +89,20 @@ const calculateProfitMargin = (sellPrice: number, basePrice: number) => {
 
 // Helper function to format currency
 const formatCurrency = (amount: number) => {
+  if (amount === null || amount === undefined || isNaN(amount)) return "SH 0";
   return `SH ${amount.toLocaleString()}`;
+};
+
+// Helper function to safely get numeric value
+const safeNumber = (value: number | null | undefined, defaultValue: number = 0) => {
+  if (value === null || value === undefined || isNaN(value)) return defaultValue;
+  return Number(value);
+};
+
+// Helper function to safely format currency
+const safeFormatCurrency = (amount: number | null | undefined) => {
+  const safeAmount = safeNumber(amount);
+  return `SH ${safeAmount.toLocaleString()}`;
 };
 
 export default function InventoryManagement() {
@@ -122,7 +135,17 @@ export default function InventoryManagement() {
     try {
       setLoading(true);
       const response = await inventoryAPI.getAll();
-      setInventory(response.data);
+      // Ensure all numeric fields have safe values
+      const safeInventory = response.data.map((item: InventoryItem) => ({
+        ...item,
+        basePrice: safeNumber(item.basePrice),
+        sellPrice: safeNumber(item.sellPrice),
+        limitPrice: safeNumber(item.limitPrice),
+        quantity: safeNumber(item.quantity, 0),
+        lowStockLimit: safeNumber(item.lowStockLimit, 10),
+        lowStockAlert: safeNumber(item.quantity, 0) <= safeNumber(item.lowStockLimit, 10)
+      }));
+      setInventory(safeInventory);
     } catch (error) {
       toast({
         title: "Error",
@@ -138,13 +161,13 @@ export default function InventoryManagement() {
     fetchInventory();
   }, []);
   
-  const filteredInventory = inventory.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+  const filteredInventory = inventory?.filter(item => {
+    const matchesSearch = item.name?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
     return matchesSearch && matchesCategory;
-  });
+  }) || [];
 
-  const lowStockCount = inventory.filter(item => item.lowStockAlert).length;
+  const lowStockCount = inventory?.filter(item => item.lowStockAlert)?.length || 0;
 
   const resetForm = () => {
     setFormData({
@@ -533,16 +556,16 @@ export default function InventoryManagement() {
                     </div>
                     <div>
                       <Label>Base Price</Label>
-                      <p className="text-lg font-semibold">SH {selectedProduct.basePrice.toLocaleString()}</p>
+                      <p className="text-lg font-semibold">{safeFormatCurrency(selectedProduct.basePrice)}</p>
                     </div>
                     <div>
                       <Label>Default Sell Price</Label>
-                      <p className="text-lg font-semibold">SH {selectedProduct.sellPrice.toLocaleString()}</p>
+                      <p className="text-lg font-semibold">{safeFormatCurrency(selectedProduct.sellPrice)}</p>
                       <p className="text-xs text-muted-foreground">Reference price - actual sale price may vary</p>
                     </div>
                     <div>
                       <Label>Limit Price</Label>
-                      <p className="text-lg font-semibold">SH {selectedProduct.limitPrice.toLocaleString()}</p>
+                      <p className="text-lg font-semibold">{safeFormatCurrency(selectedProduct.limitPrice)}</p>
                     </div>
                     <div>
                       <Label>Current Stock</Label>
@@ -550,33 +573,33 @@ export default function InventoryManagement() {
                         "text-lg font-semibold",
                         selectedProduct.lowStockAlert ? "text-warning" : "text-success"
                       )}>
-                        {selectedProduct.quantity} {selectedProduct.unit}
+                        {safeNumber(selectedProduct.quantity)} {selectedProduct.unit}
                       </p>
                     </div>
                     <div>
                       <Label>Total Value (Base Cost)</Label>
                       <p className="text-lg font-semibold">
-                        SH {(selectedProduct.basePrice * selectedProduct.quantity).toLocaleString()}
+                        {safeFormatCurrency(safeNumber(selectedProduct.basePrice) * safeNumber(selectedProduct.quantity))}
                       </p>
                     </div>
                                        <div>
                      <Label>Potential Revenue (Default Price)</Label>
                      <p className="text-lg font-semibold text-green-600">
-                       SH {(selectedProduct.sellPrice * selectedProduct.quantity).toLocaleString()}
+                       {safeFormatCurrency(safeNumber(selectedProduct.sellPrice) * safeNumber(selectedProduct.quantity))}
                      </p>
                      <p className="text-xs text-muted-foreground">Based on default sell price</p>
                    </div>
                                        <div>
                      <Label>Profit Margin (Default Price)</Label>
                      <p className="text-lg font-semibold text-green-600">
-                       {calculateProfitMargin(selectedProduct.sellPrice, selectedProduct.basePrice).toFixed(1)}%
+                       {calculateProfitMargin(safeNumber(selectedProduct.sellPrice), safeNumber(selectedProduct.basePrice)).toFixed(1)}%
                      </p>
                      <p className="text-xs text-muted-foreground">Based on default sell price</p>
                    </div>
                                        <div>
                      <Label>Profit per {selectedProduct.unit} (Default)</Label>
                      <p className="text-lg font-semibold text-green-600">
-                       SH {(selectedProduct.sellPrice - selectedProduct.basePrice).toLocaleString()}
+                       {safeFormatCurrency(safeNumber(selectedProduct.sellPrice) - safeNumber(selectedProduct.basePrice))}
                      </p>
                      <p className="text-xs text-muted-foreground">Based on default sell price</p>
                    </div>
@@ -637,35 +660,35 @@ export default function InventoryManagement() {
                 <Package className="h-5 w-5 text-primary" />
                 <div>
                   <p className="text-sm text-muted-foreground">Total Value (Base Cost)</p>
-                  <p className="text-2xl font-bold">SH {inventory.reduce((acc, item) => acc + (item.basePrice * item.quantity), 0).toLocaleString()}</p>
+                  <p className="text-2xl font-bold">{formatCurrency((inventory || []).reduce((acc, item) => acc + (safeNumber(item.basePrice) * safeNumber(item.quantity)), 0))}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
           
-                       <Card>
-               <CardContent className="p-4">
-                 <div className="flex items-center space-x-2">
-                   <Package className="h-5 w-5 text-green-600" />
-                   <div>
-                     <p className="text-sm text-muted-foreground">Potential Revenue (Default Prices)</p>
-                     <p className="text-2xl font-bold text-green-600">SH {inventory.reduce((acc, item) => acc + (item.sellPrice * item.quantity), 0).toLocaleString()}</p>
-                   </div>
-                 </div>
-               </CardContent>
-             </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Package className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Potential Revenue (Default Prices)</p>
+                  <p className="text-2xl font-bold text-green-600">{formatCurrency((inventory || []).reduce((acc, item) => acc + (safeNumber(item.sellPrice) * safeNumber(item.quantity)), 0))}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           
-                       <Card>
-               <CardContent className="p-4">
-                 <div className="flex items-center space-x-2">
-                   <Package className="h-5 w-5 text-green-600" />
-                   <div>
-                     <p className="text-sm text-muted-foreground">Total Profit (Default Prices)</p>
-                     <p className="text-2xl font-bold text-green-600">SH {inventory.reduce((acc, item) => acc + ((item.sellPrice - item.basePrice) * item.quantity), 0).toLocaleString()}</p>
-                   </div>
-                 </div>
-               </CardContent>
-             </Card>
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2">
+                <Package className="h-5 w-5 text-green-600" />
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Profit (Default Prices)</p>
+                  <p className="text-2xl font-bold text-green-600">{formatCurrency((inventory || []).reduce((acc, item) => acc + ((safeNumber(item.sellPrice) - safeNumber(item.basePrice)) * safeNumber(item.quantity)), 0))}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Search and Filter Bar */}
@@ -700,8 +723,8 @@ export default function InventoryManagement() {
               variant="outline" 
               size="sm"
               onClick={() => {
-                const lowProfitItems = inventory.filter(item => 
-                  calculateProfitMargin(item.sellPrice, item.basePrice) < 20
+                const lowProfitItems = (inventory || []).filter(item => 
+                  calculateProfitMargin(safeNumber(item.sellPrice), safeNumber(item.basePrice)) < 20
                 );
                 if (lowProfitItems.length > 0) {
                   toast({
@@ -728,7 +751,7 @@ export default function InventoryManagement() {
 
         {/* Inventory Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredInventory.map((item) => {
+          {(filteredInventory || []).map((item) => {
             const CategoryIcon = getCategoryIcon(item.category);
             return (
               <Card 
@@ -791,16 +814,16 @@ export default function InventoryManagement() {
                                       <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-muted-foreground">Base Price/{item.unit}</span>
-                        <span className="font-semibold">SH {item.basePrice.toLocaleString()}</span>
+                        <span className="font-semibold">{safeFormatCurrency(item.basePrice)}</span>
                       </div>
                                      <div className="flex items-center justify-between">
                  <span className="text-sm text-muted-foreground">Default Sell Price/{item.unit}</span>
-                 <span className="font-semibold text-green-600">SH {item.sellPrice.toLocaleString()}</span>
+                 <span className="font-semibold text-green-600">{safeFormatCurrency(item.sellPrice)}</span>
                </div>
                                      <div className="flex items-center justify-between">
                  <span className="text-sm text-muted-foreground">Profit Margin (Default)</span>
                  <span className="font-semibold text-green-600">
-                   {calculateProfitMargin(item.sellPrice, item.basePrice).toFixed(1)}%
+                   {calculateProfitMargin(safeNumber(item.sellPrice), safeNumber(item.basePrice)).toFixed(1)}%
                  </span>
                </div>
                       
@@ -810,7 +833,7 @@ export default function InventoryManagement() {
                           "font-semibold",
                           item.lowStockAlert ? "text-warning" : "text-success"
                         )}>
-                          {item.quantity} {item.unit}
+                          {safeNumber(item.quantity)} {item.unit}
                         </span>
                       </div>
                       
@@ -831,7 +854,7 @@ export default function InventoryManagement() {
           })}
         </div>
         
-        {filteredInventory.length === 0 && (
+        {(filteredInventory || []).length === 0 && (
           <Card className="p-8">
             <div className="text-center">
               <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -848,29 +871,29 @@ export default function InventoryManagement() {
         )}
 
         {/* Inventory Summary */}
-        {filteredInventory.length > 0 && (
+        {(filteredInventory || []).length > 0 && (
           <Card className="p-4">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-center">
               <div>
                 <p className="text-sm text-muted-foreground">Items Shown</p>
-                <p className="text-lg font-semibold">{filteredInventory.length}</p>
+                <p className="text-lg font-semibold">{(filteredInventory || []).length}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Cost Value</p>
                 <p className="text-lg font-semibold">
-                  {formatCurrency(filteredInventory.reduce((acc, item) => acc + (item.basePrice * item.quantity), 0))}
+                  {formatCurrency((filteredInventory || []).reduce((acc, item) => acc + (safeNumber(item.basePrice) * safeNumber(item.quantity)), 0))}
                 </p>
               </div>
                              <div>
                  <p className="text-sm text-muted-foreground">Potential Revenue (Default Prices)</p>
                  <p className="text-lg font-semibold text-green-600">
-                   {formatCurrency(filteredInventory.reduce((acc, item) => acc + (item.sellPrice * item.quantity), 0))}
+                   {formatCurrency((filteredInventory || []).reduce((acc, item) => acc + (safeNumber(item.sellPrice) * safeNumber(item.quantity)), 0))}
                  </p>
                </div>
                              <div>
                  <p className="text-sm text-muted-foreground">Total Profit (Default Prices)</p>
                  <p className="text-lg font-semibold text-green-600">
-                   {formatCurrency(filteredInventory.reduce((acc, item) => acc + ((item.sellPrice - item.basePrice) * item.quantity), 0))}
+                   {formatCurrency((filteredInventory || []).reduce((acc, item) => acc + ((safeNumber(item.sellPrice) - safeNumber(item.basePrice)) * safeNumber(item.quantity)), 0))}
                  </p>
                </div>
             </div>

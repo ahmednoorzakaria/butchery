@@ -1,15 +1,12 @@
 #!/usr/bin/env node
-import app from '../app.js';
+import dotenv from 'dotenv';
+dotenv.config(); // ✅ Loads variables from .env into process.env
+
+import app from '../app';
 import http from 'http';
-
-// Use PORT from .env or default to 3000 for local
-const port = parseInt( '3001', 10);
-
-// Change 'localhost' if you only want local access
-const host = process.env.HOST || 'localhost';
-
+const port = parseInt(process.env.PORT || '3005', 10);  // ✅ Ensures it's a number
 const server = http.createServer(app);
 
-server.listen(port, host, () => {
-  console.log(`Server running on http://${host}:${port}`);
+server.listen(port, '0.0.0.0', () => {
+  console.log(`Server running on http://0.0.0.0:${port}`);
 });

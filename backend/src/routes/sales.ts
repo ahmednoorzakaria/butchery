@@ -223,7 +223,7 @@ router.get("/customers/:id/transactions", authenticateToken, async (req, res) =>
   const transactions = await prisma.customerTransaction.findMany({
     where: { customerId },
     include: {
-      sale: {
+      Sale: {
         include: {
           items: {
             include: {

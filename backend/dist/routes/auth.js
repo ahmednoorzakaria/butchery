@@ -11,7 +11,7 @@ const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const router = (0, express_1.Router)();
 const prisma = new client_1.PrismaClient();
 // auth.ts
-const JWT_SECRET = "jwtsecretkey"; // 👈 use a secure secret in production
+const JWT_SECRET = process.env.JWT_SECRET;
 // Register
 router.post("/register", async (req, res) => {
     try {

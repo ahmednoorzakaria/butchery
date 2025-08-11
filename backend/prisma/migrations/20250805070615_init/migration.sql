@@ -5,7 +5,7 @@ CREATE TYPE "public"."Role" AS ENUM ('ADMIN', 'SALES');
 CREATE TYPE "public"."TransactionType" AS ENUM ('STOCK_IN', 'STOCK_OUT');
 
 -- CreateEnum
-CREATE TYPE "public"."PaymentType" AS ENUM ('CASH', 'MPESA');
+CREATE TYPE "public"."PaymentType" AS ENUM ('CASH', 'MPESA', 'CARD', 'TRANSFER');
 
 -- CreateTable
 CREATE TABLE "public"."User" (
@@ -28,9 +28,7 @@ CREATE TABLE "public"."InventoryItem" (
     "subtype" TEXT,
     "quantity" INTEGER NOT NULL,
     "unit" TEXT NOT NULL,
-    "basePrice" DOUBLE PRECISION,
-    "sellPrice" DOUBLE PRECISION,
-    "limitPrice" DOUBLE PRECISION,
+    "price" DOUBLE PRECISION NOT NULL,
     "lowStockLimit" INTEGER NOT NULL DEFAULT 10,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -90,7 +88,6 @@ CREATE TABLE "public"."CustomerTransaction" (
     "customerId" INTEGER NOT NULL,
     "amount" DOUBLE PRECISION NOT NULL,
     "reason" TEXT NOT NULL,
-    "saleId" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "CustomerTransaction_pkey" PRIMARY KEY ("id")
@@ -125,6 +122,3 @@ ALTER TABLE "public"."SaleItem" ADD CONSTRAINT "SaleItem_itemId_fkey" FOREIGN KE
 
 -- AddForeignKey
 ALTER TABLE "public"."CustomerTransaction" ADD CONSTRAINT "CustomerTransaction_customerId_fkey" FOREIGN KEY ("customerId") REFERENCES "public"."Customer"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "public"."CustomerTransaction" ADD CONSTRAINT "CustomerTransaction_saleId_fkey" FOREIGN KEY ("saleId") REFERENCES "public"."Sale"("id") ON DELETE SET NULL ON UPDATE CASCADE;

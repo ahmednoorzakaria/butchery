@@ -12,10 +12,8 @@ import dailyReportsRouter from './routes/dailyReports';
 
 const app = express();
 
-const allowedOrigin = [
-  'http://localhost:8080',
-  'http://localhost:8081',
-];
+const allowedOrigin = 'http://13.49.240.213';
+
 const corsOptions = {
   origin: allowedOrigin,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

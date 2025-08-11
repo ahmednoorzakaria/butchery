@@ -189,7 +189,7 @@ router.get("/customers/:id/transactions", authMiddleware_1.authenticateToken, as
     const transactions = await prisma.customerTransaction.findMany({
         where: { customerId },
         include: {
-            sale: {
+            Sale: {
                 include: {
                     items: {
                         include: {

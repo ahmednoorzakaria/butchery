@@ -2,8 +2,7 @@ import axios from "axios";
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: "http://localhost:3001",
-  timeout: 10000,
+  baseURL: "http://13.49.240.213:3000", timeout: 10000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -106,8 +105,8 @@ export const salesAPI = {
   getReceipt: (id: string, format = "json") =>
     api.get(`/sales/${id}/receipt`, { params: { format } }),
   filter: (params: any) => api.get("/sales/filter", { params }),
- report: (range: "daily" | "weekly" | "monthly" | "yearly") =>
-  api.get("/sales/sales/report", { params: { range } }),
+  report: (range: "daily" | "weekly" | "monthly" | "yearly") =>
+    api.get("/sales/sales/report", { params: { range } }),
 
 };
 
@@ -119,7 +118,7 @@ export const reportsAPI = {
   getProjectedProfits: () => api.get("/sales/reports/inventory-projections"),
   getLosses: (start?: string, end?: string) =>
     api.get("/sales/reports/loss-analysis", { params: { start, end } }),
-  
+
   // Sales Analysis
   getMostSold: (start?: string, end?: string) =>
     api.get("/sales/reports/top-products", { params: { start, end } }),
@@ -127,11 +126,11 @@ export const reportsAPI = {
     api.get("/sales/reports/sales-by-period", { params: { period } }),
   getProfitsSummary: (period: 'day' | 'week' | 'month' | 'year') =>
     api.get("/sales/reports/profit-loss", { params: { period } }),
-  
+
   // Customer and Inventory
   getCustomersDebt: () => api.get("/sales/reports/outstanding-balances"),
   getInventory: () => api.get("/sales/reports/enhanced-inventory"),
-  
+
   // Additional endpoints
   getInventoryValuation: () => api.get("/sales/reports/inventory-valuation"),
   getCashFlow: (start?: string, end?: string) =>
@@ -145,16 +144,16 @@ export const reportsAPI = {
 // Daily Reports API
 export const dailyReportsAPI = {
   getStatus: () => api.get("/daily-reports/status"),
-  triggerReport: (recipientEmail?: string) => 
+  triggerReport: (recipientEmail?: string) =>
     api.post("/daily-reports/trigger", { recipientEmail }),
-  testEmail: (recipientEmail: string) => 
+  testEmail: (recipientEmail: string) =>
     api.post("/daily-reports/test-email", { recipientEmail }),
-  configureEmail: (config: { emailUser: string; emailPassword: string; emailService: string }) => 
+  configureEmail: (config: { emailUser: string; emailPassword: string; emailService: string }) =>
     api.post("/daily-reports/configure", config),
   getConfiguration: () => api.get("/daily-reports/configuration"),
-  downloadReport: (date: string) => 
+  downloadReport: (date: string) =>
     api.get(`/daily-reports/download/${date}`, { responseType: 'blob' }),
-  previewReport: (date: string) => 
+  previewReport: (date: string) =>
     api.get(`/daily-reports/preview/${date}`, { responseType: 'blob' }),
 };
 

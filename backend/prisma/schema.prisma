@@ -1,3 +1,4 @@
+/// output   = "../src/generated/prisma"
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,20 +8,86 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
-/* Your models go here */
-
-
 model User {
   id        Int      @id @default(autoincrement())
   email     String   @unique
   name      String   @unique
   phone     String   @unique
   password  String
-  role      Role     @default(SALES) // 👈 Add this line
+  role      Role     @default(SALES)
   createdAt DateTime @default(now())
+  sales     Sale[]
+}
 
-  sales     Sale[]   // reverse relation
+model InventoryItem {
+  id            Int                    @id @default(autoincrement())
+  name          String
+  category      String
+  subtype       String?
+  quantity      Int
+  unit          String
+  lowStockLimit Int                    @default(10)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  basePrice     Float?
+  sellPrice     Float?
+  limitPrice    Float?
+  transactions  InventoryTransaction[]
+  saleItems     SaleItem[]
+}
+
+model InventoryTransaction {
+  id            Int             @id @default(autoincrement())
+  itemId        Int
+  type          TransactionType
+  quantity      Int
+  createdAt     DateTime        @default(now())
+  inventoryItem InventoryItem   @relation(fields: [itemId], references: [id])
+}
+
+model Customer {
+  id           Int                   @id @default(autoincrement())
+  name         String
+  phone        String                @unique
+  createdAt    DateTime              @default(now())
+  transactions CustomerTransaction[]
+  sales        Sale[]
+}
+
+model Sale {
+  id                  Int                   @id @default(autoincrement())
+  customerId          Int
+  userId              Int?
+  totalAmount         Float
+  discount            Float                 @default(0)
+  paidAmount          Float
+  paymentType         PaymentType
+  createdAt           DateTime              @default(now())
+  CustomerTransaction CustomerTransaction[]
+  customer            Customer              @relation(fields: [customerId], references: [id])
+  user                User?                 @relation(fields: [userId], references: [id])
+  items               SaleItem[]
+}
+
+model SaleItem {
+  id       Int           @id @default(autoincrement())
+  saleId   Int
+  itemId   Int
+  quantity Float
+  price    Float
+  item     InventoryItem @relation(fields: [itemId], references: [id])
+  sale     Sale          @relation(fields: [saleId], references: [id])
+}
+
+model CustomerTransaction {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  amount     Float
+  reason     String
+  createdAt  DateTime @default(now())
+  saleId     Int?
+  customer   Customer @relation(fields: [customerId], references: [id])
+  Sale       Sale?    @relation(fields: [saleId], references: [id])
 }
 
 enum Role {
@@ -28,92 +95,19 @@ enum Role {
   SALES
 }
 
-
-model InventoryItem {
-  id             Int                     @id @default(autoincrement())
-  name           String
-  category       String                  // e.g. meat, spice, egg
-  subtype        String?                 // e.g. leg, boneless
-  quantity       Int
-  unit           String                  // e.g. kg, pcs
-
-  basePrice      Float?                   // Cost price
-  sellPrice      Float?                  // Selling price
-  limitPrice     Float?                   // Minimum allowed selling price
-
-  lowStockLimit  Int                     @default(10)
-  transactions   InventoryTransaction[]
-  createdAt      DateTime                @default(now())
-  updatedAt      DateTime                @updatedAt
-  saleItems      SaleItem[]
-}
-
-
-model InventoryTransaction {
-  id             Int          @id @default(autoincrement())
-  itemId         Int
-  type           TransactionType
-  quantity       Int
-  createdAt      DateTime     @default(now())
-  inventoryItem  InventoryItem @relation(fields: [itemId], references: [id])
-}
-
 enum TransactionType {
   STOCK_IN
   STOCK_OUT
 }
 
-
-model Customer {
-  id           Int                @id @default(autoincrement())
-  name         String
-  phone        String             @unique
-  sales        Sale[]
-  transactions CustomerTransaction[]
-  createdAt    DateTime           @default(now())
-}
-
-model Sale {
-  id           Int        @id @default(autoincrement())
-  customer     Customer   @relation(fields: [customerId], references: [id])
-  customerId   Int
-
-  user         User?      @relation(fields: [userId], references: [id])
-  userId       Int?       // <- optional now
-
-  totalAmount  Float
-  discount     Float      @default(0)
-  paidAmount   Float
-  paymentType  PaymentType
-  items        SaleItem[]
-  customerTransactions CustomerTransaction[]
-  createdAt    DateTime   @default(now())
-}
-
-
-
-model SaleItem {
-  id        Int      @id @default(autoincrement())
-  sale      Sale     @relation(fields: [saleId], references: [id])
-  saleId    Int
-  item      InventoryItem @relation(fields: [itemId], references: [id])
-  itemId    Int
-  quantity  Float
-  price     Float
-}
-
-model CustomerTransaction {
-  id         Int       @id @default(autoincrement())
-  customer   Customer  @relation(fields: [customerId], references: [id])
-  customerId Int
-  amount     Float     // Positive for credit, negative for debit
-  reason     String
-  saleId     Int?      // Reference to sale if this transaction is related to a sale
-  sale       Sale?     @relation(fields: [saleId], references: [id])
-  createdAt  DateTime  @default(now())
-}
-
 enum PaymentType {
+  CASH
+  MPESA
+  CARD
+  TRANSFER
+}
+
+enum PaymentType_new {
   CASH
   MPESA
 }

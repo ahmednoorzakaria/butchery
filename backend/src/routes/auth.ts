@@ -8,7 +8,7 @@ const router = Router();
 const prisma = new PrismaClient();
 
 // auth.ts
-const JWT_SECRET = "jwtsecretkey"; // 👈 use a secure secret in production
+const JWT_SECRET = process.env.JWT_SECRET as string;
 
 // Register
 router.post("/register", async (req, res) => {
