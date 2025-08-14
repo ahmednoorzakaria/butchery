@@ -638,9 +638,9 @@ export const Reports = () => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold text-blue-600">KSH {item.revenue?.toLocaleString()}</div>
+                        <div className="font-semibold text-blue-600">KSH {item.revenue?.toLocaleString() || '0'}</div>
                         <div className="text-sm text-muted-foreground">
-                          Profit: KSH {item.profit?.toLocaleString()}
+                          Profit: KSH {item.profit?.toLocaleString() || '0'}
                         </div>
                       </div>
                     </div>
@@ -664,9 +664,9 @@ export const Reports = () => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-semibold text-green-600">KSH {sale.amount?.toLocaleString()}</div>
+                        <div className="font-semibold text-green-600">KSH {sale.amount?.toLocaleString() || '0'}</div>
                         <div className="text-sm text-muted-foreground">
-                          Paid: KSH {sale.paid?.toLocaleString()} • {sale.paymentType} • {format(new Date(sale.date), 'MMM dd, yyyy')}
+                          Paid: KSH {sale.paid?.toLocaleString() || '0'} • {sale.paymentType} • {format(new Date(sale.date), 'MMM dd, yyyy')}
                         </div>
                       </div>
                     </div>
@@ -723,14 +723,14 @@ export const Reports = () => {
                       <div>
                         <div className="font-medium">{item.name}</div>
                         <div className="text-sm text-muted-foreground">
-                          {item.totalQuantity} units @ KSH {item.averagePrice?.toFixed(2)}
+                          {item.totalQuantity} units @ KSH {item.averagePrice?.toFixed(2) || '0.00'}
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-green-600">KSH {item.totalProfit?.toLocaleString()}</div>
+                      <div className="font-semibold text-green-600">KSH {item.totalProfit?.toLocaleString() || '0'}</div>
                       <div className="text-sm text-muted-foreground">
-                        {item.profitMargin?.toFixed(1)}% margin
+                        {item.profitMargin?.toFixed(1) || '0.0'}% margin
                       </div>
                     </div>
                   </div>
@@ -791,9 +791,9 @@ export const Reports = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-blue-600">KSH {item.totalProfit?.toLocaleString()}</div>
+                      <div className="font-semibold text-blue-600">KSH {item.totalProfit?.toLocaleString() || '0'}</div>
                       <div className="text-sm text-muted-foreground">
-                        {item.profitMargin?.toFixed(1)}% margin
+                        {item.profitMargin?.toFixed(1) || '0.0'}% margin
                       </div>
                     </div>
                   </div>
@@ -854,7 +854,7 @@ export const Reports = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-red-600">KSH {item.potentialLoss?.toLocaleString()}</div>
+                      <div className="font-semibold text-red-600">KSH {item.potentialLoss?.toLocaleString() || '0'}</div>
                       <div className="text-sm text-muted-foreground">
                         Recommendations: {item.recommendations.join(', ')}
                       </div>
@@ -942,7 +942,7 @@ export const Reports = () => {
                 </div>
                 <div className="text-center p-4 bg-red-50 rounded-lg">
                   <div className="text-2xl font-bold text-red-600">
-                    KSH {customersDebt.reduce((sum: number, customer: CustomerDebt) => sum + Math.abs(customer.balance), 0).toLocaleString()}
+                    KSH {(customersDebt || []).reduce((sum: number, customer: CustomerDebt) => sum + Math.abs(customer.balance || 0), 0).toLocaleString()}
                   </div>
                   <div className="text-sm text-red-600">Total Outstanding</div>
                 </div>
@@ -968,7 +968,7 @@ export const Reports = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-red-600">KSH {Math.abs(customer.balance).toLocaleString()}</div>
+                                              <div className="font-semibold text-red-600">KSH {Math.abs(customer.balance || 0).toLocaleString()}</div>
                       <div className="text-sm text-muted-foreground">
                         Outstanding Balance
                       </div>
@@ -1031,9 +1031,9 @@ export const Reports = () => {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-semibold text-green-600">KSH {item.totalProfit?.toLocaleString()}</div>
+                      <div className="font-semibold text-green-600">KSH {item.totalProfit?.toLocaleString() || '0'}</div>
                       <div className="text-sm text-muted-foreground">
-                        Revenue: KSH {item.totalRevenue?.toLocaleString()}
+                        Revenue: KSH {item.totalRevenue?.toLocaleString() || '0'}
                       </div>
                     </div>
                   </div>
@@ -1186,10 +1186,10 @@ export const Reports = () => {
                     <div className="text-right">
                       <div className="font-semibold text-blue-600">KSH {item.currentValue?.toLocaleString() || '0'}</div>
                       <div className="text-sm text-muted-foreground">
-                        Profit: KSH {item.profitPotential?.toLocaleString()} • Margin: {item.profitMargin?.toFixed(1)}%
+                        Profit: KSH {item.profitPotential?.toLocaleString() || '0'} • Margin: {item.profitMargin?.toFixed(1) || '0'}%
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Velocity: {item.salesVelocity?.toFixed(2)} • Days to Stockout: {item.daysUntilStockout?.toFixed(0)}
+                        Velocity: {item.salesVelocity?.toFixed(2) || '0.00'} • Days to Stockout: {item.daysUntilStockout?.toFixed(0) || '0'}
                       </div>
                     </div>
                   </div>
@@ -1307,7 +1307,7 @@ export const Reports = () => {
                 </div>
                 <div className="text-center p-4 bg-green-50 rounded-lg">
                   <div className="text-2xl font-bold text-green-600">
-                    KSH {customerAnalysis.customers.reduce((sum, c) => sum + c.totalSpent, 0).toLocaleString()}
+                    KSH {(customerAnalysis.customers || []).reduce((sum, c) => sum + (c.totalSpent || 0), 0).toLocaleString()}
                   </div>
                   <div className="text-sm text-green-600">Total Spent</div>
                 </div>
@@ -1328,7 +1328,7 @@ export const Reports = () => {
                       <div>
                         <div className="font-medium">{customer.name}</div>
                         <div className="text-sm text-muted-foreground">
-                          Orders: {customer.numberOfOrders}, Total Spent: KSH {customer.totalSpent?.toLocaleString()}
+                          Orders: {customer.numberOfOrders}, Total Spent: KSH {customer.totalSpent?.toLocaleString() || '0'}
                         </div>
                       </div>
                     </div>
@@ -1364,19 +1364,19 @@ export const Reports = () => {
                 </div>
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
                   <div className="text-2xl font-bold text-blue-600">
-                    {userPerformance.reduce((sum, user) => sum + user.totalSales, 0).toLocaleString()}
+                    {(userPerformance || []).reduce((sum, user) => sum + (user.totalSales || 0), 0).toLocaleString()}
                   </div>
                   <div className="text-sm text-blue-600">Total Sales</div>
                 </div>
                 <div className="text-center p-4 bg-green-50 rounded-lg">
                   <div className="text-2xl font-bold text-green-600">
-                    {userPerformance.reduce((sum, user) => sum + user.saleCount, 0).toLocaleString()}
+                    {(userPerformance || []).reduce((sum, user) => sum + (user.saleCount || 0), 0).toLocaleString()}
                   </div>
                   <div className="text-sm text-green-600">Total Sales Count</div>
                 </div>
                 <div className="text-center p-4 bg-orange-50 rounded-lg">
                   <div className="text-2xl font-bold text-orange-600">
-                    {userPerformance.reduce((sum, user) => sum + user.totalPaid, 0).toLocaleString()}
+                    {(userPerformance || []).reduce((sum, user) => sum + (user.totalPaid || 0), 0).toLocaleString()}
                   </div>
                   <div className="text-sm text-orange-600">Total Paid</div>
                 </div>
@@ -1398,7 +1398,7 @@ export const Reports = () => {
                     <div className="text-right">
                       <div className="font-semibold text-blue-600">Sales Count: {user.saleCount}</div>
                       <div className="text-sm text-muted-foreground">
-                        Total Paid: KSH {user.totalPaid?.toLocaleString()}
+                        Total Paid: KSH {user.totalPaid?.toLocaleString() || '0'}
                       </div>
                     </div>
                   </div>
@@ -1427,13 +1427,13 @@ export const Reports = () => {
                 </div>
                 <div className="text-center p-4 bg-blue-50 rounded-lg">
                   <div className="text-2xl font-bold text-blue-600">
-                    {inventoryUsage.reduce((sum, item) => sum + item.totalUsed, 0).toLocaleString()}
+                    {(inventoryUsage || []).reduce((sum, item) => sum + (item.totalUsed || 0), 0).toLocaleString()}
                   </div>
                   <div className="text-sm text-blue-600">Total Units Used</div>
                 </div>
                 <div className="text-center p-4 bg-green-50 rounded-lg">
                   <div className="text-2xl font-bold text-green-600">
-                    {inventoryUsage.reduce((sum, item) => sum + item.currentStock, 0).toLocaleString()}
+                    {(inventoryUsage || []).reduce((sum, item) => sum + (item.currentStock || 0), 0).toLocaleString()}
                   </div>
                   <div className="text-sm text-green-600">Total Current Stock</div>
                 </div>
