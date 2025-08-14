@@ -158,14 +158,56 @@ export const DailyReports = () => {
     configureEmailMutation.mutate(emailConfig);
   };
 
-  const handleDownloadReport = (date?: string) => {
-    const reportDate = date || format(new Date(), 'yyyy-MM-dd');
-    window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/daily-reports/download/${reportDate}`, '_blank');
+  const handleDownloadReport = async (date?: string) => {
+    try {
+      const reportDate = date || format(new Date(), 'yyyy-MM-dd');
+      const response = await dailyReportsAPI.downloadReport(reportDate);
+      
+      // Create blob and download
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `daily-report-${reportDate}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast({
+        title: "Success",
+        description: "Report downloaded successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.error || "Failed to download report",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handlePreviewReport = (date?: string) => {
-    const reportDate = date || format(new Date(), 'yyyy-MM-dd');
-    window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/daily-reports/preview/${reportDate}`, '_blank');
+  const handlePreviewReport = async (date?: string) => {
+    try {
+      const reportDate = date || format(new Date(), 'yyyy-MM-dd');
+      const response = await dailyReportsAPI.previewReport(reportDate);
+      
+      // Create blob and open in new tab
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      
+      toast({
+        title: "Success",
+        description: "Report opened in new tab",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.error || "Failed to preview report",
+        variant: "destructive",
+      });
+    }
   };
 
   if (statusLoading || configLoading) {

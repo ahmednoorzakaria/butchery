@@ -9,3 +9,5 @@ export const businessConfig = {
   businessHours: "Mon-Sat: 6:00 AM - 8:00 PM, Sun: 7:00 AM - 6:00 PM",
   footer: "Thank you for your business! Quality meat guaranteed."
 };
+
+
