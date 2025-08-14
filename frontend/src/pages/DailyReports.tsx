@@ -48,6 +48,8 @@ export const DailyReports = () => {
   const [recipientEmail, setRecipientEmail] = useState('');
   const [debtEmail, setDebtEmail] = useState('');
   const [debtSummaryLoading, setDebtSummaryLoading] = useState(false);
+  const [completeReportEmail, setCompleteReportEmail] = useState('');
+  const [completeReportLoading, setCompleteReportLoading] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -358,6 +360,34 @@ export const DailyReports = () => {
     }
   };
 
+  const handleSendCompleteReport = async () => {
+    if (!completeReportEmail) {
+      toast({
+        title: "Error",
+        description: "Please enter an email address to send the complete daily report to.",
+        variant: "destructive",
+      });
+      return;
+    }
+    setCompleteReportLoading(true);
+    try {
+      const response = await dailyReportsAPI.sendCompleteReport(completeReportEmail);
+      toast({
+        title: "Success",
+        description: response.data.message,
+      });
+      setCompleteReportEmail(''); // Clear the input after sending
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.error || "Failed to send complete daily report email",
+        variant: "destructive",
+      });
+    } finally {
+      setCompleteReportLoading(false);
+    }
+  };
+
   if (statusLoading || configLoading) {
     return (
       <Layout title="Daily Reports" showSearch={false}>
@@ -665,6 +695,50 @@ export const DailyReports = () => {
                   </Button>
                 </div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Complete Daily Report Email Section */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-500" />
+              Send Complete Daily Report
+            </CardTitle>
+            <CardDescription>
+              Send the complete daily business report (including debt summary) with PDF attachment to your email address
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="completeReportEmail">Email Address</Label>
+                <Input
+                  id="completeReportEmail"
+                  type="email"
+                  placeholder="Enter your email address"
+                  value={completeReportEmail}
+                  onChange={(e) => setCompleteReportEmail(e.target.value)}
+                />
+              </div>
+              <Button 
+                onClick={handleSendCompleteReport}
+                disabled={!completeReportEmail || completeReportLoading}
+                className="w-full"
+              >
+                {completeReportLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sending Complete Report...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Send Complete Daily Report
+                  </>
+                )}
+              </Button>
             </div>
           </CardContent>
         </Card>

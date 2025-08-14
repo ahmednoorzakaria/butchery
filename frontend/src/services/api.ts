@@ -156,6 +156,8 @@ export const dailyReportsAPI = {
     api.get(`/daily-reports/preview/${date}`, { responseType: 'blob' }),
   sendDebtSummary: (recipientEmail: string) =>
     api.post("/daily-reports/debt-summary", { recipientEmail }),
+  sendCompleteReport: (recipientEmail: string) =>
+    api.post("/daily-reports/send-complete-report", { recipientEmail }),
   testPDF: () => api.get("/daily-reports/test-pdf", { responseType: 'blob' }),
 };
 

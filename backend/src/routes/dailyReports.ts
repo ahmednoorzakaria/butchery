@@ -163,6 +163,70 @@ router.get("/configuration", authenticateToken, async (req, res) => {
   }
 });
 
+// POST /daily-reports/send-complete-report - Send complete daily report email
+router.post("/send-complete-report", authenticateToken, async (req, res) => {
+  try {
+    const { recipientEmail } = req.body;
+    
+    if (!recipientEmail) {
+      return res.status(400).json({ error: "Recipient email is required" });
+    }
+
+    // Generate the daily report PDF
+    await pdfService.initialize();
+    const pdfBuffer = await pdfService.generateDailyReport(new Date());
+    
+    // Get debt summary data
+    const customers = await prisma.customer.findMany({
+      include: { transactions: true }
+    });
+
+    const debtData = customers.map(customer => {
+      const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      return {
+        customerId: customer.id,
+        name: customer.name,
+        balance
+      };
+    }).filter(customer => customer.balance < 0); // Only customers with debt
+
+    const totalOutstanding = debtData.reduce((sum, customer) => sum + Math.abs(customer.balance), 0);
+    const customerCount = debtData.length;
+    
+    // Sort by debt amount (highest first)
+    const topDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+
+    const debtSummary = {
+      totalOutstanding,
+      customerCount,
+      topDebtors: topDebtors
+    };
+
+    // Send the complete daily report email
+    const success = await emailService.sendDailyReport(recipientEmail, pdfBuffer, new Date(), debtSummary);
+    
+    if (success) {
+      res.json({ 
+        success: true, 
+        message: `Complete daily report email sent successfully to ${recipientEmail}`,
+        debtSummary: {
+          totalOutstanding,
+          customerCount,
+          topDebtors: topDebtors
+        }
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: "Failed to send complete daily report email" 
+      });
+    }
+  } catch (error) {
+    console.error("Error sending complete daily report email:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 // POST /daily-reports/debt-summary - Send debt summary email
 router.post("/debt-summary", authenticateToken, async (req, res) => {
   try {
