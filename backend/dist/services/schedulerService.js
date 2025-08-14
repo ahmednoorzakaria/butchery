@@ -55,6 +55,8 @@ class SchedulerService {
             console.log('Generating daily report PDF...');
             const pdfBuffer = await this.pdfService.generateDailyReport(date);
             console.log('PDF generated successfully, sending emails...');
+            // Get debt summary data
+            const debtSummary = await this.getDebtSummary();
             // Get all admin users who should receive daily reports
             const adminUsers = await prisma.user.findMany({
                 where: {
@@ -66,7 +68,7 @@ class SchedulerService {
                 return;
             }
             // Send report to each admin user
-            const emailPromises = adminUsers.map(user => this.emailService.sendDailyReport(user.email, pdfBuffer, date));
+            const emailPromises = adminUsers.map(user => this.emailService.sendDailyReport(user.email, pdfBuffer, date, debtSummary || undefined));
             const results = await Promise.allSettled(emailPromises);
             let successCount = 0;
             let failureCount = 0;
@@ -94,9 +96,10 @@ class SchedulerService {
         console.log('Manually triggering daily report generation...');
         try {
             const pdfBuffer = await this.pdfService.generateDailyReport();
+            const debtSummary = await this.getDebtSummary();
             if (recipientEmail) {
                 // Send to specific email for testing
-                const success = await this.emailService.sendDailyReport(recipientEmail, pdfBuffer);
+                const success = await this.emailService.sendDailyReport(recipientEmail, pdfBuffer, new Date(), debtSummary || undefined);
                 if (success) {
                     console.log(`Test report sent successfully to ${recipientEmail}`);
                 }
@@ -146,6 +149,36 @@ class SchedulerService {
         tomorrow.setDate(tomorrow.getDate() + 1);
         tomorrow.setHours(0, 0, 0, 0);
         return tomorrow.toISOString();
+    }
+    // Get debt summary data
+    async getDebtSummary() {
+        try {
+            const customers = await prisma.customer.findMany({
+                include: { transactions: true }
+            });
+            const debtData = customers.map(customer => {
+                const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+                return {
+                    customerId: customer.id,
+                    name: customer.name,
+                    balance
+                };
+            }).filter(customer => customer.balance < 0); // Only customers with debt
+            const totalOutstanding = debtData.reduce((sum, customer) => sum + Math.abs(customer.balance), 0);
+            const customerCount = debtData.length;
+            // Sort by debt amount (highest first)
+            const topDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+            return {
+                totalOutstanding,
+                customerCount,
+                topDebtors: topDebtors, // Include all debtors, not just top 10
+                allDebtors: debtData
+            };
+        }
+        catch (error) {
+            console.error('Error fetching debt summary:', error);
+            return null;
+        }
     }
 }
 exports.SchedulerService = SchedulerService;

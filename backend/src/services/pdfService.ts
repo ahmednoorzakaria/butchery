@@ -8,10 +8,23 @@ export class PDFService {
   private browser: Browser | null = null;
 
   async initialize() {
-    this.browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    try {
+      this.browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox', 
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process'
+        ]
+      });
+    } catch (error) {
+      console.error('Failed to initialize Puppeteer browser:', error);
+      throw new Error('PDF generation service unavailable');
+    }
   }
 
   async close() {
@@ -335,6 +348,12 @@ export class PDFService {
           </div>
         </div>
 
+        <!-- Debt Summary -->
+        <div class="section">
+          <div class="section-title">⚠️ Debt Summary</div>
+          ${await this.getDebtSummaryHTML()}
+        </div>
+
         <!-- Footer -->
         <div class="section" style="margin-top: 50px; text-align: center; border-top: 1px solid #dee2e6; padding-top: 20px;">
           <p style="color: #6c757d; font-size: 12px;">
@@ -345,6 +364,39 @@ export class PDFService {
       </body>
       </html>
     `;
+  }
+
+  // Fallback method for simple PDF generation
+  private async generateSimplePDF(html: string): Promise<Buffer> {
+    // This is a basic fallback - in production you might want to use a different library
+    const simpleHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Daily Report</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; }
+          .section { margin-bottom: 20px; }
+          .section-title { background-color: #f0f0f0; padding: 10px; font-weight: bold; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>Daily Business Report</h1>
+          <p>Generated on: ${new Date().toLocaleDateString()}</p>
+        </div>
+        <div class="section">
+          <div class="section-title">Report Summary</div>
+          <p>PDF generation is currently experiencing issues. Please try again later or contact support.</p>
+        </div>
+      </body>
+      </html>
+    `;
+    
+    // Return a simple HTML buffer as fallback
+    return Buffer.from(simpleHtml, 'utf-8');
   }
 
   private async getSalesData(startDate: string, endDate: string) {
@@ -623,28 +675,132 @@ export class PDFService {
     }
   }
 
+  private async getDebtSummaryHTML(): Promise<string> {
+    try {
+      const customers = await prisma.customer.findMany({
+        include: { transactions: true }
+      });
+
+      const debtData = customers.map(customer => {
+        const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+        return {
+          customerId: customer.id,
+          name: customer.name,
+          balance
+        };
+      }).filter(customer => customer.balance < 0); // Only customers with debt
+
+      if (debtData.length === 0) {
+        return `
+          <div style="text-align: center; padding: 20px; color: #28a745;">
+            <h3>✅ No Outstanding Debts</h3>
+            <p>All customers are up to date with their payments.</p>
+          </div>
+        `;
+      }
+
+      const totalOutstanding = debtData.reduce((sum, customer) => sum + Math.abs(customer.balance), 0);
+      const customerCount = debtData.length;
+      const averageDebt = totalOutstanding / customerCount;
+      
+      // Sort by debt amount (highest first)
+      const topDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+
+      return `
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-value negative">KSH ${totalOutstanding.toLocaleString()}</div>
+            <div class="metric-label">Total Outstanding</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value negative">${customerCount}</div>
+            <div class="metric-label">Customers with Debt</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value negative">KSH ${averageDebt.toFixed(0)}</div>
+            <div class="metric-label">Average Debt</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-value warning">${topDebtors.length > 0 ? topDebtors[0].name.substring(0, 15) + '...' : 'N/A'}</div>
+            <div class="metric-label">Highest Debtor</div>
+          </div>
+        </div>
+
+        ${topDebtors.length > 0 ? `
+        <div style="margin-top: 20px;">
+          <h4 style="color: #856404; margin-bottom: 15px;">Complete List of Debtors (${topDebtors.length} customers):</h4>
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Customer Name</th>
+                <th>Outstanding Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${topDebtors.map((debtor, index) => `
+                <tr>
+                  <td style="text-align: center;">${index + 1}</td>
+                  <td>${debtor.name}</td>
+                  <td class="negative" style="text-align: right; font-weight: bold;">KSH ${Math.abs(debtor.balance).toLocaleString()}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+        ` : ''}
+      `;
+    } catch (error) {
+      console.error('Error generating debt summary HTML:', error);
+      return `
+        <div style="text-align: center; padding: 20px; color: #6c757d;">
+          <h3>⚠️ Error Loading Debt Data</h3>
+          <p>Unable to load debt summary information.</p>
+        </div>
+      `;
+    }
+  }
+
   async generateDailyReport(date: Date = new Date()): Promise<Buffer> {
     if (!this.browser) {
       await this.initialize();
     }
 
-    const html = await this.generateHTMLReport(date);
-    const page = await this.browser!.newPage();
-    
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    
-    const pdf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: {
-        top: '20mm',
-        right: '20mm',
-        bottom: '20mm',
-        left: '20mm'
-      }
-    });
+    try {
+      const html = await this.generateHTMLReport(date);
+      const page = await this.browser!.newPage();
+      
+      // Set a reasonable timeout for page operations
+      page.setDefaultTimeout(60000); // 60 seconds instead of 30
+      page.setDefaultNavigationTimeout(60000);
+      
+      // Use 'domcontentloaded' instead of 'networkidle0' for static content
+      await page.setContent(html, { waitUntil: 'domcontentloaded' });
+      
+      const pdf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: {
+          top: '20mm',
+          right: '20mm',
+          bottom: '20mm',
+          left: '20mm'
+        }
+      });
 
-    await page.close();
-    return Buffer.from(pdf);
+      await page.close();
+      return Buffer.from(pdf);
+    } catch (error) {
+      console.error('Error generating PDF report with Puppeteer:', error);
+      console.log('Falling back to simple HTML generation...');
+      
+      try {
+        // Try fallback method
+        return await this.generateSimplePDF('');
+      } catch (fallbackError) {
+        console.error('Fallback method also failed:', fallbackError);
+        throw new Error(`PDF generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
   }
 }

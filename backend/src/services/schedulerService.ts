@@ -61,6 +61,9 @@ export class SchedulerService {
       
       console.log('PDF generated successfully, sending emails...');
       
+      // Get debt summary data
+      const debtSummary = await this.getDebtSummary();
+      
       // Get all admin users who should receive daily reports
       const adminUsers = await prisma.user.findMany({
         where: {
@@ -75,7 +78,7 @@ export class SchedulerService {
 
       // Send report to each admin user
       const emailPromises = adminUsers.map(user => 
-        this.emailService.sendDailyReport(user.email, pdfBuffer, date)
+        this.emailService.sendDailyReport(user.email, pdfBuffer, date, debtSummary || undefined)
       );
 
       const results = await Promise.allSettled(emailPromises);
@@ -108,10 +111,11 @@ export class SchedulerService {
     
     try {
       const pdfBuffer = await this.pdfService.generateDailyReport();
+      const debtSummary = await this.getDebtSummary();
       
       if (recipientEmail) {
         // Send to specific email for testing
-        const success = await this.emailService.sendDailyReport(recipientEmail, pdfBuffer);
+        const success = await this.emailService.sendDailyReport(recipientEmail, pdfBuffer, new Date(), debtSummary || undefined);
         if (success) {
           console.log(`Test report sent successfully to ${recipientEmail}`);
         } else {
@@ -161,5 +165,39 @@ export class SchedulerService {
     tomorrow.setHours(0, 0, 0, 0);
     
     return tomorrow.toISOString();
+  }
+
+  // Get debt summary data
+  private async getDebtSummary() {
+    try {
+      const customers = await prisma.customer.findMany({
+        include: { transactions: true }
+      });
+
+      const debtData = customers.map(customer => {
+        const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+        return {
+          customerId: customer.id,
+          name: customer.name,
+          balance
+        };
+      }).filter(customer => customer.balance < 0); // Only customers with debt
+
+      const totalOutstanding = debtData.reduce((sum, customer) => sum + Math.abs(customer.balance), 0);
+      const customerCount = debtData.length;
+      
+      // Sort by debt amount (highest first)
+      const topDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+
+      return {
+        totalOutstanding,
+        customerCount,
+        topDebtors: topDebtors, // Include all debtors, not just top 10
+        allDebtors: debtData
+      };
+    } catch (error) {
+      console.error('Error fetching debt summary:', error);
+      return null;
+    }
   }
 }

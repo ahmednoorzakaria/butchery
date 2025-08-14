@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { dailyReportsAPI } from "@/services/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,7 +19,8 @@ import {
   CheckCircle, 
   AlertCircle,
   FileText,
-  Send
+  Send,
+  Loader2
 } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
@@ -45,8 +46,75 @@ export const DailyReports = () => {
   });
   const [testEmail, setTestEmail] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
+  const [debtEmail, setDebtEmail] = useState('');
+  const [debtSummaryLoading, setDebtSummaryLoading] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Check authentication status
+  const checkAuthStatus = () => {
+    const token = localStorage.getItem("auth_token");
+    const userId = localStorage.getItem("user_id");
+    const userRole = localStorage.getItem("user_role");
+    
+    console.log("Auth Status:", {
+      hasToken: !!token,
+      tokenLength: token?.length || 0,
+      userId,
+      userRole,
+      tokenPreview: token ? token.substring(0, 20) + "..." : "None"
+    });
+    
+    return { hasToken: !!token, token, userId, userRole };
+  };
+
+  // Check auth on component mount
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
+
+  // Test API call to debug authentication
+  const testAPICall = async () => {
+    try {
+      const token = localStorage.getItem("auth_token");
+      console.log("Testing API call with token:", token ? "Present" : "Missing");
+      
+      // Test a simple authenticated endpoint
+      const response = await fetch("http://13.49.240.213:3000/daily-reports/status", {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log("API Response Status:", response.status);
+      console.log("API Response Headers:", response.headers);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log("API Response Data:", data);
+        toast({
+          title: "API Test Success",
+          description: "API call successful - authentication working",
+        });
+      } else {
+        const errorData = await response.text();
+        console.log("API Error Response:", errorData);
+        toast({
+          title: "API Test Failed",
+          description: `Status: ${response.status} - ${errorData}`,
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("API Test Error:", error);
+      toast({
+        title: "API Test Error",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    }
+  };
 
   // Fetch scheduler status
   const { data: status, isLoading: statusLoading } = useQuery<SchedulerStatus>({
@@ -160,6 +228,19 @@ export const DailyReports = () => {
 
   const handleDownloadReport = async (date?: string) => {
     try {
+      // Check if user is authenticated
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        toast({
+          title: "Authentication Error",
+          description: "Please log in again to download reports",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log("Downloading report with token:", token.substring(0, 20) + "...");
+      
       const reportDate = date || format(new Date(), 'yyyy-MM-dd');
       const response = await dailyReportsAPI.downloadReport(reportDate);
       
@@ -179,16 +260,42 @@ export const DailyReports = () => {
         description: "Report downloaded successfully",
       });
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.response?.data?.error || "Failed to download report",
-        variant: "destructive",
-      });
+      console.error("Download error:", error);
+      
+      if (error.response?.status === 401) {
+        toast({
+          title: "Authentication Error",
+          description: "Your session has expired. Please log in again.",
+          variant: "destructive",
+        });
+        // Redirect to login
+        localStorage.removeItem("auth_token");
+        window.location.href = "/login";
+      } else {
+        toast({
+          title: "Error",
+          description: error.response?.data?.error || "Failed to download report",
+          variant: "destructive",
+        });
+      }
     }
   };
 
   const handlePreviewReport = async (date?: string) => {
     try {
+      // Check if user is authenticated
+      const token = localStorage.getItem("auth_token");
+      if (!token) {
+        toast({
+          title: "Authentication Error",
+          description: "Please log in again to preview reports",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log("Previewing report with token:", token.substring(0, 20) + "...");
+      
       const reportDate = date || format(new Date(), 'yyyy-MM-dd');
       const response = await dailyReportsAPI.previewReport(reportDate);
       
@@ -202,11 +309,52 @@ export const DailyReports = () => {
         description: "Report opened in new tab",
       });
     } catch (error: any) {
+      console.error("Preview error:", error);
+      
+      if (error.response?.status === 401) {
+        toast({
+          title: "Authentication Error",
+          description: "Your session has expired. Please log in again.",
+          variant: "destructive",
+        });
+        // Redirect to login
+        localStorage.removeItem("auth_token");
+        window.location.href = "/login";
+      } else {
+        toast({
+          title: "Error",
+          description: error.response?.data?.error || "Failed to preview report",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const handleSendDebtSummary = async () => {
+    if (!debtEmail) {
       toast({
         title: "Error",
-        description: error.response?.data?.error || "Failed to preview report",
+        description: "Please enter an email address to send the debt summary to.",
         variant: "destructive",
       });
+      return;
+    }
+    setDebtSummaryLoading(true);
+    try {
+      const response = await dailyReportsAPI.sendDebtSummary(debtEmail);
+      toast({
+        title: "Success",
+        description: response.data.message,
+      });
+      setDebtEmail(''); // Clear the input after sending
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.response?.data?.error || "Failed to send debt summary email",
+        variant: "destructive",
+      });
+    } finally {
+      setDebtSummaryLoading(false);
     }
   };
 
@@ -258,6 +406,79 @@ export const DailyReports = () => {
                 </div>
                 <div className="text-sm text-muted-foreground">Timezone</div>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Authentication Status - Debug */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-orange-500" />
+              Authentication Status (Debug)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="font-medium">Has Token:</span>
+                <Badge variant={checkAuthStatus().hasToken ? "default" : "destructive"}>
+                  {checkAuthStatus().hasToken ? "Yes" : "No"}
+                </Badge>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium">User ID:</span>
+                <span className="text-sm text-muted-foreground">{checkAuthStatus().userId || 'None'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium">User Role:</span>
+                <span className="text-sm text-muted-foreground">{checkAuthStatus().userRole || 'None'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-medium">Token Preview:</span>
+                <span className="text-sm text-muted-foreground">{checkAuthStatus().tokenPreview}</span>
+              </div>
+              <Button 
+                onClick={checkAuthStatus}
+                variant="outline"
+                size="sm"
+                className="mt-2"
+              >
+                Refresh Auth Status
+              </Button>
+              <Button 
+                onClick={testAPICall}
+                variant="outline"
+                size="sm"
+                className="mt-2 ml-2"
+              >
+                Test API Call
+              </Button>
+              <Button 
+                onClick={async () => {
+                  try {
+                    const response = await dailyReportsAPI.testPDF();
+                    const blob = new Blob([response.data], { type: 'application/pdf' });
+                    const url = window.URL.createObjectURL(blob);
+                    window.open(url, '_blank');
+                    toast({
+                      title: "Success",
+                      description: "Test PDF generated successfully",
+                    });
+                  } catch (error: any) {
+                    toast({
+                      title: "Error",
+                      description: error.response?.data?.error || "Failed to generate test PDF",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className="mt-2 ml-2"
+              >
+                Test PDF Generation
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -448,6 +669,50 @@ export const DailyReports = () => {
           </CardContent>
         </Card>
 
+        {/* Debt Summary Email Section */}
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Mail className="h-5 w-5 text-red-500" />
+              Send Debt Summary Email
+            </CardTitle>
+            <CardDescription>
+              Send a detailed debt summary report to your email address
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="debtEmail">Email Address</Label>
+                <Input
+                  id="debtEmail"
+                  type="email"
+                  placeholder="Enter your email address"
+                  value={debtEmail}
+                  onChange={(e) => setDebtEmail(e.target.value)}
+                />
+              </div>
+              <Button 
+                onClick={handleSendDebtSummary}
+                disabled={!debtEmail || debtSummaryLoading}
+                className="w-full"
+              >
+                {debtSummaryLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Sending Debt Summary...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="mr-2 h-4 w-4" />
+                    Send Debt Summary Email
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         {/* Information */}
         <Card>
           <CardHeader>
@@ -485,3 +750,4 @@ export const DailyReports = () => {
 };
 
 export default DailyReports;
+

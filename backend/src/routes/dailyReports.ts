@@ -2,10 +2,14 @@ import { Router } from "express";
 import { authenticateToken } from "../middleware/authMiddleware";
 import { SchedulerService } from "../services/schedulerService";
 import { PDFService } from "../services/pdfService";
+import { EmailService } from "../services/emailService";
+import { PrismaClient } from "@prisma/client";
 
 const router = Router();
 const schedulerService = new SchedulerService();
 const pdfService = new PDFService();
+const emailService = new EmailService();
+const prisma = new PrismaClient();
 
 // Initialize scheduler when the module loads
 schedulerService.initialize().then(() => {
@@ -155,6 +159,67 @@ router.get("/configuration", authenticateToken, async (req, res) => {
     res.json(config);
   } catch (error) {
     console.error("Error getting email configuration:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// POST /daily-reports/debt-summary - Send debt summary email
+router.post("/debt-summary", authenticateToken, async (req, res) => {
+  try {
+    const { recipientEmail } = req.body;
+    
+    if (!recipientEmail) {
+      return res.status(400).json({ error: "Recipient email is required" });
+    }
+
+    // Fetch debt data
+    const customers = await prisma.customer.findMany({
+      include: { transactions: true }
+    });
+
+    const debtData = customers.map(customer => {
+      const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      return {
+        customerId: customer.id,
+        name: customer.name,
+        balance
+      };
+    }).filter(customer => customer.balance < 0); // Only customers with debt
+
+    const totalOutstanding = debtData.reduce((sum, customer) => sum + Math.abs(customer.balance), 0);
+    const customerCount = debtData.length;
+    
+    // Sort by debt amount (highest first)
+    const topDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+    const allDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+
+          const debtSummary = {
+        totalOutstanding,
+        customerCount,
+        topDebtors: topDebtors, // Include all debtors, not just top 10
+        allDebtors
+      };
+
+    const success = await emailService.sendDebtSummaryEmail(recipientEmail, debtSummary);
+    
+    if (success) {
+      res.json({ 
+        success: true, 
+        message: `Debt summary email sent successfully to ${recipientEmail}`,
+        debtSummary: {
+          totalOutstanding,
+          customerCount,
+          topDebtors: topDebtors // Send all debtors for response
+        }
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: "Failed to send debt summary email" 
+      });
+    }
+  } catch (error) {
+    console.error("Error sending debt summary email:", error);
     res.status(500).json({ error: "Server error" });
   }
 });

@@ -140,7 +140,6 @@ export const reportsAPI = {
   getUserPerformance: () => api.get("/sales/reports/user-performance"),
   getInventoryUsage: () => api.get("/sales/reports/inventory-usage"),
 };
-
 // Daily Reports API
 export const dailyReportsAPI = {
   getStatus: () => api.get("/daily-reports/status"),
@@ -155,6 +154,10 @@ export const dailyReportsAPI = {
     api.get(`/daily-reports/download/${date}`, { responseType: 'blob' }),
   previewReport: (date: string) =>
     api.get(`/daily-reports/preview/${date}`, { responseType: 'blob' }),
+  sendDebtSummary: (recipientEmail: string) =>
+    api.post("/daily-reports/debt-summary", { recipientEmail }),
+  testPDF: () => api.get("/daily-reports/test-pdf", { responseType: 'blob' }),
 };
 
 export default api;
+
