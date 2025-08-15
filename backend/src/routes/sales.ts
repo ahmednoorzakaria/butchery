@@ -36,6 +36,51 @@ router.get("/customers", authenticateToken, async (req, res) => {
   res.json(customers);
 });
 
+// Update Customer
+router.put("/customers/:id", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { name, phone } = req.body;
+  
+  try {
+    // Check if customer exists
+    const existingCustomer = await prisma.customer.findUnique({
+      where: { id: parseInt(id) }
+    });
+    
+    if (!existingCustomer) {
+      return res.status(404).json({ error: "Customer not found" });
+    }
+    
+    // Check if phone number is already taken by another customer
+    if (phone && phone !== existingCustomer.phone) {
+      const phoneExists = await prisma.customer.findFirst({
+        where: { 
+          phone,
+          id: { not: parseInt(id) }
+        }
+      });
+      
+      if (phoneExists) {
+        return res.status(400).json({ error: "Phone number already exists" });
+      }
+    }
+    
+    // Update customer
+    const updatedCustomer = await prisma.customer.update({
+      where: { id: parseInt(id) },
+      data: { 
+        name: name || existingCustomer.name,
+        phone: phone || existingCustomer.phone
+      }
+    });
+    
+    res.json(updatedCustomer);
+  } catch (error) {
+    console.error('Error updating customer:', error);
+    res.status(500).json({ error: "Failed to update customer" });
+  }
+});
+
 // Record Sale
 router.post("/sales", authenticateToken, async (req, res) => {
   const { customerId, items, discount = 0, paidAmount, paymentType } = req.body;

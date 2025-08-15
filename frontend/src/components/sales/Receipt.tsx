@@ -90,46 +90,60 @@ export function Receipt({ sale }: ReceiptProps) {
             
             body { 
               font-family: 'Courier New', monospace; 
-              margin: 20px; 
-              font-size: 12px;
-              line-height: 1.4;
+              margin: 10px; 
+              font-size: 10px;
+              line-height: 1.2;
+              width: 80mm;
+              max-width: 80mm;
             }
             
             .header { 
               text-align: center; 
-              border-bottom: 2px solid #000; 
-              padding-bottom: 15px; 
-              margin-bottom: 20px; 
+              border-bottom: 1px solid #000; 
+              padding-bottom: 10px; 
+              margin-bottom: 15px; 
             }
             
             .business-name { 
-              font-size: 20px; 
+              font-size: 16px; 
               font-weight: bold; 
               margin-bottom: 5px; 
               text-transform: uppercase;
+              color: #000;
             }
             
             .business-tagline { 
-              font-size: 14px; 
+              font-size: 11px; 
               color: #333; 
-              margin-bottom: 8px;
+              margin-bottom: 5px;
             }
             
             .business-info { 
-              font-size: 11px; 
+              font-size: 9px; 
               color: #666; 
-              margin-bottom: 3px;
+              margin-bottom: 2px;
+            }
+            
+            .till-number {
+              font-size: 10px;
+              font-weight: bold;
+              color: #000;
+              margin: 8px 0;
+              padding: 5px;
+              border: 1px solid #000;
+              background-color: #f0f0f0;
             }
             
             .receipt-details { 
-              margin-bottom: 20px; 
+              margin-bottom: 15px; 
               display: grid;
               grid-template-columns: 1fr 1fr;
-              gap: 10px;
+              gap: 5px;
+              font-size: 9px;
             }
             
             .receipt-details div { 
-              margin-bottom: 5px; 
+              margin-bottom: 3px; 
             }
             
             .receipt-details .label { 
@@ -140,66 +154,69 @@ export function Receipt({ sale }: ReceiptProps) {
             .items-table { 
               width: 100%; 
               border-collapse: collapse; 
-              margin-bottom: 20px; 
-              font-size: 11px;
+              margin-bottom: 15px; 
+              font-size: 9px;
             }
             
             .items-table th, .items-table td { 
-              border: 1px solid #ddd; 
-              padding: 8px; 
+              border: 1px solid #000; 
+              padding: 3px; 
               text-align: left; 
+              vertical-align: top;
             }
             
             .items-table th { 
-              background-color: #f8f8f8; 
+              background-color: #f0f0f0; 
               font-weight: bold;
               text-align: center;
+              font-size: 8px;
             }
             
             .items-table .item-name { 
               font-weight: bold; 
-              color: #333;
+              color: #000;
+              font-size: 9px;
             }
             
             .items-table .item-subtype { 
-              font-size: 10px; 
+              font-size: 8px; 
               color: #666; 
               font-style: italic;
             }
             
             .totals { 
-              border-top: 2px solid #000; 
-              padding-top: 15px; 
-              margin-bottom: 20px;
+              border-top: 1px solid #000; 
+              padding-top: 10px; 
+              margin-bottom: 15px;
             }
             
             .total-row { 
               display: flex; 
               justify-content: space-between; 
-              margin-bottom: 8px; 
-              font-size: 12px;
+              margin-bottom: 5px; 
+              font-size: 10px;
             }
             
             .total-row.final { 
               font-weight: bold; 
-              font-size: 16px; 
-              border-top: 1px solid #ddd;
-              padding-top: 8px;
+              font-size: 12px; 
+              border-top: 1px solid #000;
+              padding-top: 5px;
             }
             
             .footer { 
               text-align: center; 
-              margin-top: 30px; 
-              font-size: 11px; 
+              margin-top: 20px; 
+              font-size: 9px; 
               color: #666;
-              border-top: 1px solid #ddd;
-              padding-top: 15px;
+              border-top: 1px solid #000;
+              padding-top: 10px;
             }
             
             .business-hours {
-              font-size: 10px;
+              font-size: 8px;
               color: #888;
-              margin-top: 10px;
+              margin-top: 8px;
             }
             
             .print-button {
@@ -223,8 +240,9 @@ export function Receipt({ sale }: ReceiptProps) {
             <div class="business-name">${businessConfig.name}</div>
             <div class="business-tagline">${businessConfig.tagline}</div>
             <div class="business-info">${businessConfig.address}</div>
-            <div class="business-info">Phone: ${businessConfig.phone} | Email: ${businessConfig.email}</div>
-            <div class="business-info">${businessConfig.website} | ${businessConfig.taxNumber}</div>
+            <div class="business-info">Phone: ${businessConfig.phone}</div>
+            <div class="business-info">${businessConfig.website}</div>
+            <div class="till-number">Buy Goods Till Number > 4242427</div>
           </div>
           
           <div class="receipt-details">
@@ -235,7 +253,6 @@ export function Receipt({ sale }: ReceiptProps) {
             <div><span class="label">Phone:</span> ${sale.customer.phone}</div>
             <div><span class="label">Payment Method:</span> ${sale.paymentType}</div>
             <div><span class="label">Sold By:</span> ${sale.user?.name || 'N/A'}</div>
-            <div><span class="label">Cashier ID:</span> ${sale.userId || 'N/A'}</div>
           </div>
           
           <table class="items-table">
@@ -244,7 +261,7 @@ export function Receipt({ sale }: ReceiptProps) {
                 <th>Item</th>
                 <th>Qty</th>
                 <th>Unit</th>
-                <th>Unit Price</th>
+                <th>Price</th>
                 <th>Total</th>
               </tr>
             </thead>

@@ -39,7 +39,6 @@ interface Customer {
   name: string;
   phone: string;
   createdAt: string;
-  updatedAt: string;
 }
 
 interface CustomerTransaction {
@@ -77,11 +76,13 @@ interface CustomerAccount {
 export default function CustomerManagement() {
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [showProfileDialog, setShowProfileDialog] = useState(false);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [formData, setFormData] = useState({ name: "", phone: "" });
+  const [editFormData, setEditFormData] = useState({ name: "", phone: "" });
   const [paymentData, setPaymentData] = useState({ amount: "", paymentType: "CASH" });
   const [showSaleDetailsDialog, setShowSaleDetailsDialog] = useState(false);
   const [selectedSale, setSelectedSale] = useState<CustomerTransaction['sale'] | null>(null);
@@ -181,6 +182,30 @@ export default function CustomerManagement() {
     }
   });
 
+  // Update customer mutation
+  const updateCustomerMutation = useMutation({
+    mutationFn: (data: { id: string; name: string; phone: string }) => 
+      customersAPI.update(data.id, { name: data.name, phone: data.phone }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
+      setShowEditDialog(false);
+      setEditFormData({ name: "", phone: "" });
+      setSelectedCustomer(null);
+      toast({
+        title: "Success",
+        description: "Customer updated successfully",
+      });
+    },
+    onError: (error: unknown) => {
+      const apiError = error as { response?: { data?: { error?: string } } };
+      toast({
+        title: "Error",
+        description: apiError?.response?.data?.error || "Failed to update customer",
+        variant: "destructive",
+      });
+    }
+  });
+
   // Add payment mutation
   const addPaymentMutation = useMutation({
     mutationFn: (data: { customerId: string; amount: number; paymentType: string }) => 
@@ -240,6 +265,29 @@ export default function CustomerManagement() {
   const handleViewProfile = (customer: Customer) => {
     setSelectedCustomer(customer);
     setShowProfileDialog(true);
+  };
+
+  const handleEditCustomer = (customer: Customer) => {
+    setSelectedCustomer(customer);
+    setEditFormData({ name: customer.name, phone: customer.phone });
+    setShowEditDialog(true);
+  };
+
+  const handleUpdateCustomer = () => {
+    if (!selectedCustomer || !editFormData.name || !editFormData.phone) {
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    updateCustomerMutation.mutate({
+      id: selectedCustomer.id.toString(),
+      name: editFormData.name,
+      phone: editFormData.phone
+    });
   };
 
   const handleViewAccount = (customer: Customer) => {
@@ -419,6 +467,10 @@ export default function CustomerManagement() {
                           <User className="h-4 w-4 mr-2" />
                           View Profile
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleEditCustomer(customer)}>
+                          <User className="h-4 w-4 mr-2" />
+                          Edit Customer
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => handleViewAccount(customer)}>
                           <Receipt className="h-4 w-4 mr-2" />
                           Account History
@@ -497,6 +549,53 @@ export default function CustomerManagement() {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Customer Dialog */}
+        <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>Edit Customer</DialogTitle>
+              <DialogDescription>
+                Update customer information. All fields are required.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit-name">Customer Name</Label>
+                <Input
+                  id="edit-name"
+                  placeholder="Enter customer name"
+                  value={editFormData.name}
+                  onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit-phone">Phone Number</Label>
+                <Input
+                  id="edit-phone"
+                  placeholder="Enter phone number"
+                  value={editFormData.phone}
+                  onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setShowEditDialog(false);
+                setEditFormData({ name: "", phone: "" });
+                setSelectedCustomer(null);
+              }}>
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleUpdateCustomer}
+                disabled={updateCustomerMutation.isPending}
+              >
+                {updateCustomerMutation.isPending ? "Updating..." : "Update Customer"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Customer Profile Dialog */}
         <Dialog open={showProfileDialog} onOpenChange={setShowProfileDialog}>
           <DialogContent className="sm:max-w-[500px]">
@@ -534,10 +633,7 @@ export default function CustomerManagement() {
                     <Label className="text-sm font-medium">Joined Date</Label>
                     <p>{new Date(selectedCustomer.createdAt).toLocaleDateString()}</p>
                   </div>
-                  <div>
-                    <Label className="text-sm font-medium">Last Updated</Label>
-                    <p>{new Date(selectedCustomer.updatedAt).toLocaleDateString()}</p>
-                  </div>
+
                 </div>
               </div>
             )}
