@@ -101,6 +101,7 @@ export const salesAPI = {
   getAll: (params?: any) => api.get("/sales/sales", { params }),
   getById: (id: string) => api.get(`/sales/${id}`),
   create: (data: any) => api.post("/sales/sales", data),
+  update: (id: string, data: any) => api.put(`/sales/sales/${id}`, data),
   delete: (id: string) => api.delete(`/sales/${id}`),
   getReceipt: (id: string, format = "json") =>
     api.get(`/sales/${id}/receipt`, { params: { format } }),

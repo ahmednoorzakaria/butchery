@@ -5,6 +5,7 @@ import {
   Calendar,
   Receipt,
   Eye,
+  Edit,
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { salesAPI } from "@/services/api";
 import { Receipt as ReceiptComponent } from "./Receipt";
+import { EditSaleDialog } from "./EditSaleDialog";
 
 // Types
 interface SaleItem {
@@ -37,6 +39,9 @@ interface SaleItem {
   price: number;
   item?: {
     name: string;
+    unit?: string;
+    category?: string;
+    subtype?: string;
   };
 }
 
@@ -84,6 +89,11 @@ export function Views({
 }: ViewsProps) {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isSaleDetailOpen, setIsSaleDetailOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState<Sale | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  // Check if current user is admin
+  const isAdmin = localStorage.getItem("user_role") === "ADMIN";
 
   // Fetch sales data with improved configuration
   const { 
@@ -294,6 +304,21 @@ export function Views({
         </Card>
       </div>
 
+      {/* Admin Notice */}
+      {!isAdmin && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2 text-blue-800">
+              <div className="h-5 w-5 text-blue-600">ℹ️</div>
+              <p className="text-sm">
+                <span className="font-medium">Note:</span> Only administrators can edit sales. 
+                Sales users can view sales details and generate receipts.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Search and Filter Bar */}
       <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
         <div className="flex flex-col md:flex-row gap-4 flex-1">
@@ -440,6 +465,19 @@ export function Views({
                       <Eye className="h-4 w-4 mr-2" />
                       View
                     </Button>
+                    {isAdmin && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditingSale(sale);
+                          setIsEditDialogOpen(true);
+                        }}
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit
+                      </Button>
+                    )}
                     <ReceiptComponent sale={sale} />
                   </div>
                 </div>
@@ -568,6 +606,19 @@ export function Views({
               </div>
 
               <div className="flex justify-end space-x-2">
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setEditingSale(selectedSale);
+                      setIsEditDialogOpen(true);
+                      setIsSaleDetailOpen(false);
+                    }}
+                  >
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => setIsSaleDetailOpen(false)}
@@ -593,6 +644,16 @@ export function Views({
           </div>
         </Card>
       )}
+
+      {/* Edit Sale Dialog */}
+      <EditSaleDialog
+        sale={editingSale}
+        isOpen={isEditDialogOpen}
+        onClose={() => {
+          setIsEditDialogOpen(false);
+          setEditingSale(null);
+        }}
+      />
     </div>
   );
 }

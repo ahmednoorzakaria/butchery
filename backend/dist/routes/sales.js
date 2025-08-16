@@ -173,6 +173,142 @@ router.post("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
         });
     }
 });
+// Update Sale
+router.put("/sales/:id", authMiddleware_1.authenticateToken, async (req, res) => {
+    const { id } = req.params;
+    const { customerId, items, discount = 0, paidAmount, paymentType } = req.body;
+    const userId = req.userId;
+    if (!userId)
+        return res.status(401).json({ error: "User not authenticated" });
+    if (!items || items.length === 0)
+        return res.status(400).json({ error: "Items are required" });
+    // Validate payment type - only CASH or MPESA allowed
+    if (!paymentType || !['CASH', 'MPESA'].includes(paymentType)) {
+        return res.status(400).json({
+            error: "Payment type must be either 'CASH' or 'MPESA'"
+        });
+    }
+    try {
+        // First, get the existing sale to understand what needs to be reverted
+        const existingSale = await prisma.sale.findUnique({
+            where: { id: parseInt(id) },
+            include: { items: true }
+        });
+        if (!existingSale) {
+            return res.status(404).json({ error: "Sale not found" });
+        }
+        // Use a transaction to ensure data consistency
+        const result = await prisma.$transaction(async (tx) => {
+            // Step 1: Revert the existing sale's inventory impact
+            for (const existingItem of existingSale.items) {
+                // Restore the original quantity
+                await tx.inventoryItem.update({
+                    where: { id: existingItem.itemId },
+                    data: {
+                        quantity: { increment: existingItem.quantity }
+                    }
+                });
+                // Create a transaction record for the reversal
+                await tx.inventoryTransaction.create({
+                    data: {
+                        itemId: existingItem.itemId,
+                        type: "STOCK_IN",
+                        quantity: existingItem.quantity,
+                    },
+                });
+            }
+            // Step 2: Delete existing sale items
+            await tx.saleItem.deleteMany({
+                where: { saleId: parseInt(id) }
+            });
+            // Step 3: Validate and prepare new items
+            let totalAmount = 0;
+            const saleItemsData = [];
+            const inventoryUpdates = [];
+            for (const item of items) {
+                const inventory = await tx.inventoryItem.findUnique({
+                    where: { id: item.itemId },
+                });
+                if (!inventory) {
+                    throw new Error(`Item with ID ${item.itemId} not found`);
+                }
+                if (inventory.quantity < item.quantity) {
+                    throw new Error(`Insufficient stock for item "${inventory.name}". Available: ${inventory.quantity}, Requested: ${item.quantity}`);
+                }
+                // Validate sale price against limit price
+                if (inventory.limitPrice && item.price < inventory.limitPrice) {
+                    throw new Error(`Sale price (${item.price}) for item "${inventory.name}" cannot be lower than the limit price (${inventory.limitPrice})`);
+                }
+                // Warn if sale price is significantly lower than default sell price
+                if (inventory.sellPrice && item.price < inventory.sellPrice * 0.8) {
+                    console.warn(`Warning: Sale price ${item.price} for item ${inventory.name} is significantly lower than default sell price ${inventory.sellPrice}`);
+                }
+                totalAmount += item.quantity * item.price;
+                saleItemsData.push({
+                    itemId: item.itemId,
+                    quantity: item.quantity,
+                    price: item.price,
+                });
+                // Store inventory update info
+                inventoryUpdates.push({
+                    itemId: item.itemId,
+                    quantity: item.quantity,
+                    currentStock: inventory.quantity,
+                    newStock: inventory.quantity - item.quantity
+                });
+            }
+            const netAmount = totalAmount - discount;
+            // Step 4: Update the sale record
+            const updatedSale = await tx.sale.update({
+                where: { id: parseInt(id) },
+                data: {
+                    customerId: customerId || existingSale.customerId,
+                    totalAmount: netAmount,
+                    discount,
+                    paidAmount,
+                    paymentType,
+                    items: { create: saleItemsData },
+                },
+                include: { customer: true, user: true, items: { include: { item: true } } },
+            });
+            // Step 5: Update inventory for new items
+            for (const update of inventoryUpdates) {
+                console.log(`Updating inventory for item ${update.itemId}: ${update.currentStock} -> ${update.newStock}`);
+                const updatedItem = await tx.inventoryItem.update({
+                    where: { id: update.itemId },
+                    data: { quantity: update.newStock },
+                });
+                console.log(`Inventory updated successfully: ${updatedItem.name} now has ${updatedItem.quantity} in stock`);
+                // Create transaction record
+                await tx.inventoryTransaction.create({
+                    data: {
+                        itemId: update.itemId,
+                        type: "STOCK_OUT",
+                        quantity: update.quantity,
+                    },
+                });
+            }
+            // Step 6: Update customer transaction if amount changed
+            const existingCustomerTransaction = await tx.customerTransaction.findFirst({
+                where: { saleId: parseInt(id) }
+            });
+            if (existingCustomerTransaction) {
+                const newBalance = paidAmount - netAmount;
+                await tx.customerTransaction.update({
+                    where: { id: existingCustomerTransaction.id },
+                    data: { amount: newBalance }
+                });
+            }
+            return { sale: updatedSale, inventoryUpdates };
+        });
+        console.log('Sale updated successfully with inventory updates:', result.inventoryUpdates);
+        res.json({ sale: result.sale, inventoryUpdates: result.inventoryUpdates });
+    }
+    catch (error) {
+        console.error('Error updating sale:', error);
+        res.status(400).json({ error: error.message || "Failed to update sale" });
+    }
+});
 // Record Payment
 router.post("/customers/:id/payments", authMiddleware_1.authenticateToken, async (req, res) => {
     const customerId = parseInt(req.params.id);

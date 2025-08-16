@@ -1,10 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import {
   Plus,
   ShoppingCart,
   Trash2,
   AlertTriangle,
+  X,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +39,8 @@ interface InventoryItem {
   quantity: number;
   limitPrice?: number;
   sellPrice?: number;
+  category?: string; // Added for search
+  subtype?: string; // Added for search
 }
 
 interface Customer {
@@ -77,9 +81,24 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
   const [totalAmountInput, setTotalAmountInput] = useState("");
   const [priceInput, setPriceInput] = useState("");
   const [autoDiscount, setAutoDiscount] = useState(0); // New state for auto-calculated discount
+  const [productSearch, setProductSearch] = useState(""); // New state for product search
+  const [customerSearch, setCustomerSearch] = useState(""); // New state for customer search
+  const searchInputRef = useRef<HTMLInputElement>(null); // Ref for search input
+  const customerSearchInputRef = useRef<HTMLInputElement>(null); // Ref for customer search input
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Auto-focus search input when dialog opens
+  useEffect(() => {
+    if (isOpen && customerSearchInputRef.current) {
+      // Small delay to ensure dialog is fully rendered
+      const timer = setTimeout(() => {
+        customerSearchInputRef.current?.focus();
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   // Fetch data
   const { data: customersResponse, isLoading: customersLoading } = useQuery({
@@ -97,6 +116,72 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                    Array.isArray(customersResponse) ? customersResponse : [];
   const inventory = Array.isArray(inventoryResponse?.data) ? inventoryResponse.data : 
                    Array.isArray(inventoryResponse) ? inventoryResponse : [];
+
+  // Filter and sort inventory alphabetically
+  const filteredInventory = useMemo(() => {
+    if (!inventory || inventory.length === 0) return [];
+    
+    let filtered = inventory;
+    
+    // Apply search filter
+    if (productSearch.trim()) {
+      const searchTerm = productSearch.toLowerCase().trim();
+      filtered = inventory.filter((product: InventoryItem) =>
+        product.name.toLowerCase().includes(searchTerm) ||
+        product.category?.toLowerCase().includes(searchTerm) ||
+        product.subtype?.toLowerCase().includes(searchTerm) ||
+        product.unit?.toLowerCase().includes(searchTerm)
+      );
+    }
+    
+    // Sort alphabetically by name
+    return filtered.sort((a: InventoryItem, b: InventoryItem) => {
+      // If searching, prioritize exact matches first
+      if (productSearch.trim()) {
+        const searchTerm = productSearch.toLowerCase().trim();
+        const aExact = a.name.toLowerCase().startsWith(searchTerm);
+        const bExact = b.name.toLowerCase().startsWith(searchTerm);
+        
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+      }
+      
+      return a.name.localeCompare(b.name);
+    });
+  }, [inventory, productSearch]);
+
+  // Filter and sort customers alphabetically
+  const filteredCustomers = useMemo(() => {
+    if (!customers || customers.length === 0) return [];
+    
+    let filtered = customers;
+    
+    // Apply search filter
+    if (customerSearch.trim()) {
+      const searchTerm = customerSearch.toLowerCase().trim();
+      filtered = customers.filter((customer: Customer) =>
+        customer.name.toLowerCase().includes(searchTerm) ||
+        customer.phone.toLowerCase().includes(searchTerm)
+      );
+    }
+    
+    // Sort alphabetically by name
+    return filtered.sort((a: Customer, b: Customer) => {
+      // If searching, prioritize exact matches first
+      if (customerSearch.trim()) {
+        const searchTerm = customerSearch.toLowerCase().trim();
+        const aExact = a.name.toLowerCase().startsWith(searchTerm);
+        const bExact = b.name.toLowerCase().startsWith(searchTerm);
+        
+        if (aExact && !bExact) return -1;
+        if (!aExact && bExact) return 1;
+      }
+      
+      // If no search, prioritize customers with recent activity (you can enhance this later)
+      // For now, just alphabetical sorting
+      return a.name.localeCompare(b.name);
+    });
+  }, [customers, customerSearch]);
 
   // Create sale mutation
   const createSaleMutation = useMutation({
@@ -132,6 +217,8 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
     setTotalAmountInput("");
     setPriceInput("");
     setAutoDiscount(0); // Reset auto discount
+    setProductSearch(""); // Reset product search
+    setCustomerSearch(""); // Reset customer search
   };
 
   const addItemToSale = () => {
@@ -305,8 +392,58 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <Label className="text-sm font-medium mb-2 block">
-                Customer
+                Customer {!customerSearch && `(${customers.length} total)`}
               </Label>
+              
+              {/* Customer Search */}
+              <div className="mb-3">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    type="text"
+                    placeholder="Search customers by name or phone..."
+                    value={customerSearch}
+                    onChange={(e) => setCustomerSearch(e.target.value)}
+                    className="w-full pl-10 pr-10"
+                    ref={customerSearchInputRef}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Escape') {
+                        setCustomerSearch("");
+                        customerSearchInputRef.current?.blur();
+                      }
+                    }}
+                  />
+                  {customerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCustomerSearch("")}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+                    >
+                      <X className="h-4 w-4 text-gray-500" />
+                    </button>
+                  )}
+                </div>
+                {customerSearch && (
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-xs text-muted-foreground">
+                      Found {filteredCustomers.length} of {customers.length} customers
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setCustomerSearch("")}
+                      className="text-xs text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                )}
+                {!customerSearch && customers.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    💡 Tip: Start typing to quickly find customers by name or phone number.
+                  </p>
+                )}
+              </div>
+              
               <Select value={customerId} onValueChange={setCustomerId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select customer" />
@@ -316,17 +453,22 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     <SelectItem value="" disabled>
                       Loading customers...
                     </SelectItem>
-                  ) : customers.length === 0 ? (
+                  ) : filteredCustomers.length === 0 ? (
                     <SelectItem value="" disabled>
-                      No customers available
+                      {customerSearch ? `No customers found for "${customerSearch}"` : "No customers available"}
                     </SelectItem>
                   ) : (
-                    customers.map((customer: Customer) => (
+                    filteredCustomers.map((customer: Customer) => (
                       <SelectItem
                         key={customer.id}
                         value={customer.id.toString()}
                       >
-                        {customer.name} - {customer.phone}
+                        <div className="flex flex-col w-full">
+                          <span className="font-medium">{customer.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            📱 {customer.phone}
+                          </span>
+                        </div>
                       </SelectItem>
                     ))
                   )}
@@ -353,6 +495,58 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
           <div className="border rounded-lg p-4">
             <h3 className="font-medium mb-4">Add Items</h3>
             
+            {/* Product Search */}
+            <div className="mb-4">
+              <Label className="text-sm font-medium mb-2 block">
+                Search Products {!productSearch && `(${inventory.length} total)`}
+              </Label>
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Type to search products by name, category, or subtype..."
+                  value={productSearch}
+                  onChange={(e) => setProductSearch(e.target.value)}
+                  className="w-full pl-10 pr-10"
+                  ref={searchInputRef}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') {
+                      setProductSearch("");
+                      searchInputRef.current?.blur();
+                    }
+                  }}
+                />
+                {productSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setProductSearch("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+                  >
+                    <X className="h-4 w-4 text-gray-500" />
+                  </button>
+                )}
+              </div>
+              {productSearch && (
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-xs text-muted-foreground">
+                    Found {filteredInventory.length} of {inventory.length} products
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setProductSearch("")}
+                    className="text-xs text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Clear search
+                  </button>
+                </div>
+              )}
+              {!productSearch && inventory.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  💡 Tip: Start typing to quickly find products. You can search by name, category, or unit.
+                </p>
+              )}
+            </div>
+            
             {/* Product Selection */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
               <div>
@@ -369,18 +563,30 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                       <SelectItem value="" disabled>
                         Loading products...
                       </SelectItem>
-                    ) : inventory.length === 0 ? (
+                    ) : filteredInventory.length === 0 ? (
                       <SelectItem value="" disabled>
-                        No products available
+                        {productSearch ? `No products found for "${productSearch}"` : "No products available"}
                       </SelectItem>
                     ) : (
-                      inventory.map((product: InventoryItem) => (
+                      filteredInventory.map((product: InventoryItem) => (
                         <SelectItem
                           key={product.id}
                           value={product.id.toString()}
                         >
-                          {product.name} - KSH {product.price}/{product.unit}{" "}
-                          (Stock: {product.quantity})
+                          <div className="flex flex-col w-full">
+                            <span className="font-medium">{product.name}</span>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>KSH {product.price}/{product.unit}</span>
+                              <span>•</span>
+                              <span>Stock: {product.quantity}</span>
+                              {product.category && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-blue-600">{product.category}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </SelectItem>
                       ))
                     )}
@@ -416,7 +622,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                   placeholder="Enter sale price"
                   value={priceInput}
                   onChange={(e) => setPriceInput(e.target.value)}
-                  step="0.01"
+                  step="0.00001"
                   min="0"
                 />
                 {selectedProductData?.limitPrice && priceInput && parseFloat(priceInput) < selectedProductData.limitPrice && (
@@ -443,8 +649,8 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                   placeholder="Quantity"
                   value={quantity}
                   onChange={(e) => setQuantity(Number(e.target.value))}
-                  min="0.01"
-                  step="0.01"
+                  min="0.00001"
+                  step="0.00001"
                 />
                 {totalAmountInput && priceInput && (
                   <p className="text-xs text-muted-foreground mt-1">
@@ -461,7 +667,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     placeholder="Enter total amount"
                     value={totalAmountInput}
                     onChange={(e) => setTotalAmountInput(e.target.value)}
-                    step="0.01"
+                    step="0.00001"
                     min="0"
                   />
                 </div>
@@ -508,32 +714,34 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
           {saleItems.length > 0 && (
             <div className="border rounded-lg p-4">
               <h3 className="font-medium mb-4">Sale Items</h3>
-              <div className="space-y-2">
-                {saleItems.map((item) => (
-                  <div
-                    key={item.itemId}
-                    className="flex items-center justify-between p-2 bg-muted rounded"
-                  >
-                    <div>
-                      <span className="font-medium">{item.name}</span>
-                      <span className="text-muted-foreground ml-2">
-                        {item.quantity}x KSH {item.price}
-                      </span>
+              <div className="max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 pr-2">
+                <div className="space-y-2">
+                  {saleItems.map((item) => (
+                    <div
+                      key={item.itemId}
+                      className="flex items-center justify-between p-2 bg-muted rounded"
+                    >
+                      <div>
+                        <span className="font-medium">{item.name}</span>
+                        <span className="text-muted-foreground ml-2">
+                          {item.quantity}x KSH {item.price}
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium">
+                          KSH {item.total.toLocaleString()}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeItemFromSale(item.itemId)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <span className="font-medium">
-                        KSH {item.total.toLocaleString()}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeItemFromSale(item.itemId)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
               
               {/* Totals and Payment */}
@@ -552,6 +760,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     }}
                     className="w-32"
                     min="0"
+                    step="0.00001"
                   />
                 </div>
                 <div className="flex justify-between text-lg">
@@ -585,6 +794,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                       }}
                       className="w-32"
                       min="0"
+                      step="0.00001"
                     />
                     <p className="text-xs text-muted-foreground mt-1">
                       Enter 0 to record as debt, or enter the actual amount paid
