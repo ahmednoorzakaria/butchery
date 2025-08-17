@@ -62,6 +62,7 @@ model Sale {
   discount            Float                 @default(0)
   paidAmount          Float
   paymentType         PaymentType
+  notes               String?               // Optional notes for important details
   createdAt           DateTime              @default(now())
   CustomerTransaction CustomerTransaction[]
   customer            Customer              @relation(fields: [customerId], references: [id])

@@ -67,7 +67,7 @@ router.put("/customers/:id", authMiddleware_1.authenticateToken, async (req, res
 });
 // Record Sale
 router.post("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
-    const { customerId, items, discount = 0, paidAmount, paymentType } = req.body;
+    const { customerId, items, discount = 0, paidAmount, paymentType, notes } = req.body;
     const userId = req.userId;
     if (!userId)
         return res.status(401).json({ error: "User not authenticated" });
@@ -128,6 +128,7 @@ router.post("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
                     discount,
                     paidAmount,
                     paymentType,
+                    notes,
                     items: { create: saleItemsData },
                 },
                 include: { customer: true, user: true },
@@ -176,7 +177,7 @@ router.post("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
 // Update Sale
 router.put("/sales/:id", authMiddleware_1.authenticateToken, async (req, res) => {
     const { id } = req.params;
-    const { customerId, items, discount = 0, paidAmount, paymentType } = req.body;
+    const { customerId, items, discount = 0, paidAmount, paymentType, notes } = req.body;
     const userId = req.userId;
     if (!userId)
         return res.status(401).json({ error: "User not authenticated" });
@@ -267,6 +268,7 @@ router.put("/sales/:id", authMiddleware_1.authenticateToken, async (req, res) =>
                     discount,
                     paidAmount,
                     paymentType,
+                    notes,
                     items: { create: saleItemsData },
                 },
                 include: { customer: true, user: true, items: { include: { item: true } } },

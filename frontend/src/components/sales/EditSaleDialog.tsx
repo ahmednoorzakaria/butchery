@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,7 @@ interface Sale {
   discount: number;
   paidAmount: number;
   paymentType: string;
+  notes?: string;
   createdAt: string;
   customer: Customer;
   user: User;
@@ -79,6 +81,7 @@ export function EditSaleDialog({ sale, isOpen, onClose }: EditSaleDialogProps) {
   const [paidAmount, setPaidAmount] = useState(0);
   const [paymentType, setPaymentType] = useState<string>("");
   const [customerId, setCustomerId] = useState<number>(0);
+  const [notes, setNotes] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const queryClient = useQueryClient();
@@ -111,6 +114,7 @@ export function EditSaleDialog({ sale, isOpen, onClose }: EditSaleDialogProps) {
       setPaidAmount(sale.paidAmount);
       setPaymentType(sale.paymentType);
       setCustomerId(sale.customerId);
+      setNotes(sale.notes || "");
     }
   }, [sale]);
 
@@ -143,6 +147,7 @@ export function EditSaleDialog({ sale, isOpen, onClose }: EditSaleDialogProps) {
         discount,
         paidAmount,
         paymentType,
+        notes: notes.trim() || undefined,
       });
     } finally {
       setIsSubmitting(false);
@@ -226,6 +231,21 @@ export function EditSaleDialog({ sale, isOpen, onClose }: EditSaleDialogProps) {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Notes Section */}
+          <div>
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea
+              id="notes"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Type any important details to remember about this sale..."
+              rows={3}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              💡 These notes will be visible when viewing the sale but won't appear on printed receipts.
+            </p>
           </div>
 
           {/* Items Section */}

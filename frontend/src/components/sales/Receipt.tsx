@@ -33,6 +33,7 @@ interface Sale {
   discount: number;
   paidAmount: number;
   paymentType: string;
+  notes?: string;
   createdAt: string;
   customer: Customer;
   user: User;

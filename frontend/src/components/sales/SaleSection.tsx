@@ -27,6 +27,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { salesAPI, inventoryAPI, customersAPI } from "@/services/api";
 import { useToast } from "@/hooks/use-toast";
 
@@ -83,6 +84,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
   const [autoDiscount, setAutoDiscount] = useState(0); // New state for auto-calculated discount
   const [productSearch, setProductSearch] = useState(""); // New state for product search
   const [customerSearch, setCustomerSearch] = useState(""); // New state for customer search
+  const [notes, setNotes] = useState(""); // State for sale notes
   const searchInputRef = useRef<HTMLInputElement>(null); // Ref for search input
   const customerSearchInputRef = useRef<HTMLInputElement>(null); // Ref for customer search input
 
@@ -219,6 +221,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
     setAutoDiscount(0); // Reset auto discount
     setProductSearch(""); // Reset product search
     setCustomerSearch(""); // Reset customer search
+    setNotes(""); // Reset notes
   };
 
   const addItemToSale = () => {
@@ -305,6 +308,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
       discount: discount,
       paidAmount: paidAmount, // Now always a number, 0 means full debt
       paymentType: paymentType,
+      notes: notes.trim() || undefined, // Only send notes if not empty
     };
 
     createSaleMutation.mutate(saleData);
@@ -488,6 +492,25 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                   <SelectItem value="MPESA">M-Pesa</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* Notes Section */}
+          <div className="border rounded-lg p-4">
+            <h3 className="font-medium mb-4">Notes</h3>
+            <div>
+              <Label className="text-sm font-medium mb-2 block">
+                Important Details
+              </Label>
+              <Textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Type any important details to remember about this sale..."
+                rows={3}
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                💡 These notes will be visible when viewing the sale but won't appear on printed receipts.
+              </p>
             </div>
           </div>
 

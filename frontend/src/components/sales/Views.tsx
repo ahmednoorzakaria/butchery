@@ -63,6 +63,7 @@ interface Sale {
   discount: number;
   paidAmount: number;
   paymentType: string;
+  notes?: string;
   createdAt: string;
   customer: Customer;
   user: User;
@@ -538,6 +539,14 @@ export function Views({
                   <p className="text-lg">{selectedSale.user?.name || 'N/A'}</p>
                 </div>
               </div>
+
+              {/* Notes Section */}
+              {selectedSale.notes && (
+                <div className="border rounded-lg p-4 bg-blue-50">
+                  <h3 className="font-medium mb-2 text-blue-900">Notes</h3>
+                  <p className="text-blue-800 whitespace-pre-wrap">{selectedSale.notes}</p>
+                </div>
+              )}
 
               <div>
                 <h3 className="font-medium mb-2">Items</h3>
