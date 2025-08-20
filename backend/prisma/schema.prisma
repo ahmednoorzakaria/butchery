@@ -91,6 +91,18 @@ model CustomerTransaction {
   Sale       Sale?    @relation(fields: [saleId], references: [id])
 }
 
+model Expense {
+  id          Int      @id @default(autoincrement())
+  amount      Float
+  reason      String
+  recipient   String
+  date        DateTime @default(now())
+  notes       String?
+  category    String   @default("General")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 enum Role {
   ADMIN
   SALES

@@ -2,7 +2,8 @@ import axios from "axios";
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: "http://13.49.240.213:3000", timeout: 10000,
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:3001", 
+  timeout: 10000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -160,6 +161,21 @@ export const dailyReportsAPI = {
   sendCompleteReport: (recipientEmail: string) =>
     api.post("/daily-reports/send-complete-report", { recipientEmail }),
   testPDF: () => api.get("/daily-reports/test-pdf", { responseType: 'blob' }),
+};
+
+// Expenses API
+export const expensesAPI = {
+  getAll: () => api.get("/expenses"),
+  getById: (id: string | number) => api.get(`/expenses/${id}`),
+  create: (data: any) => api.post("/expenses", data),
+  update: (id: string | number, data: any) => api.put(`/expenses/${id}`, data),
+  delete: (id: string | number) => api.delete(`/expenses/${id}`),
+  getMonthly: (year: number, month: number) => api.get(`/expenses/monthly/${year}/${month}`),
+  getCategories: () => api.get("/expenses/categories"),
+  downloadMonthlyReport: (year: number, month: number) => 
+    api.get(`/expenses/monthly/${year}/${month}/report`, { responseType: 'blob' }),
+  downloadComprehensiveReport: (year: number, month: number) => 
+    api.get(`/expenses/monthly/${year}/${month}/comprehensive`, { responseType: 'blob' }),
 };
 
 export default api;

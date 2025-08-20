@@ -9,10 +9,11 @@ import inventoryRouter from './routes/inventory';
 import salesRouter from './routes/sales';
 import reportsRouter from './routes/reports';
 import dailyReportsRouter from './routes/dailyReports';
+import expensesRouter from './routes/expenses';
 
 const app = express();
 
-const allowedOrigin = 'http://13.49.240.213';
+const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:8080';
 
 const corsOptions = {
   origin: allowedOrigin,
@@ -34,5 +35,6 @@ app.use('/inventory', inventoryRouter);
 app.use('/sales', salesRouter);
 app.use('/sales/reports', reportsRouter);
 app.use('/daily-reports', dailyReportsRouter);
+app.use('/expenses', expensesRouter);
 
 export default app;

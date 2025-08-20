@@ -10,6 +10,7 @@ import Reports from "./pages/Reports";
 import DailyReports from "./pages/DailyReports";
 import SalesList from "./pages/SalesList";
 import CustomersList from "./pages/CustomersList";
+import Expenses from "./pages/Expenses";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import ProtectedRoute from "./components/ProtectedRoute.tsx";
@@ -91,6 +92,14 @@ const App = () => (
             element={
               <ProtectedRoute allowedRoles={["ADMIN", "SALES"]}>
                 <CustomersList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/expenses"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <Expenses />
               </ProtectedRoute>
             }
           />

@@ -7,6 +7,7 @@ import {
   Eye,
   Edit,
   User,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { salesAPI } from "@/services/api";
 import { Receipt as ReceiptComponent } from "./Receipt";
 import { EditSaleDialog } from "./EditSaleDialog";
+import { format } from "date-fns";
 
 // Types
 interface SaleItem {
@@ -73,25 +75,22 @@ interface Sale {
 
 interface ViewsProps {
   searchTerm: string;
-  selectedDate: string;
   selectedUser: string;
   onSearchChange: (value: string) => void;
-  onDateChange: (value: string) => void;
   onUserChange: (value: string) => void;
 }
 
 export function Views({
   searchTerm,
-  selectedDate,
   selectedUser,
   onSearchChange,
-  onDateChange,
   onUserChange,
 }: ViewsProps) {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isSaleDetailOpen, setIsSaleDetailOpen] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
   // Check if current user is admin
   const isAdmin = localStorage.getItem("user_role") === "ADMIN";
@@ -129,6 +128,12 @@ export function Views({
     refetch();
   }, [refetch]);
 
+  // Refetch data when month changes
+  useEffect(() => {
+    console.log('Month changed, refetching sales data...');
+    refetch();
+  }, [currentMonth, refetch]);
+
   // Debug logging
   console.log('Views render state:', { 
     salesResponse, 
@@ -152,22 +157,9 @@ export function Views({
 
     const matchesDate = (() => {
       const saleDate = new Date(sale.createdAt);
-      const now = new Date();
-      
-      switch (selectedDate) {
-        case "today":
-          return saleDate.toDateString() === now.toDateString();
-        case "week": {
-          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          return saleDate >= weekAgo;
-        }
-        case "month":
-          return saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
-        case "year":
-          return saleDate.getFullYear() === now.getFullYear();
-        default:
-          return true;
-      }
+      const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
+      return saleDate >= startDate && saleDate <= endDate;
     })();
 
     const matchesUser = selectedUser === "all" || sale.userId.toString() === selectedUser;
@@ -180,16 +172,35 @@ export function Views({
     new Map(sales.map((sale: Sale) => [sale.userId, sale.user])).values()
   ).filter(Boolean) : [];
 
-  // Calculate today's total
-  const todayTotal = sales ? sales
+  // Calculate current month's total
+  const currentMonthTotal = sales ? sales
     .filter((sale: Sale) => {
       const saleDate = new Date(sale.createdAt);
-      const today = new Date();
-      return saleDate.toDateString() === today.toDateString();
+      const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
+      return saleDate >= startDate && saleDate <= endDate;
     })
     .reduce((sum: number, sale: Sale) => sum + sale.totalAmount, 0) : 0;
 
+  // Calculate current month's transaction count
+  const currentMonthTransactions = sales ? sales
+    .filter((sale: Sale) => {
+      const saleDate = new Date(sale.createdAt);
+      const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
+      const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
+      return saleDate >= startDate && saleDate <= endDate;
+    }).length : 0;
 
+  // Handle month navigation
+  const handleMonthChange = (direction: 'prev' | 'next') => {
+    const newMonth = new Date(currentMonth);
+    if (direction === 'prev') {
+      newMonth.setMonth(newMonth.getMonth() - 1);
+    } else {
+      newMonth.setMonth(newMonth.getMonth() + 1);
+    }
+    setCurrentMonth(newMonth);
+  };
 
   const getPaymentMethodColor = (method: string) => {
     switch (method) {
@@ -239,9 +250,9 @@ export function Views({
             <div className="flex items-center space-x-2">
               <Receipt className="h-5 w-5 text-primary" />
               <div>
-                <p className="text-sm text-muted-foreground">Today's Sales</p>
+                <p className="text-sm text-muted-foreground">Sales This Month</p>
                 <p className="text-2xl font-bold">
-                  KSH {todayTotal.toLocaleString()}
+                  KSH {currentMonthTotal.toLocaleString()}
                 </p>
               </div>
             </div>
@@ -254,7 +265,7 @@ export function Views({
               <Receipt className="h-5 w-5 text-success" />
               <div>
                 <p className="text-sm text-muted-foreground">Transactions</p>
-                <p className="text-2xl font-bold">{filteredSales.length}</p>
+                <p className="text-2xl font-bold">{currentMonthTransactions}</p>
               </div>
             </div>
           </CardContent>
@@ -268,13 +279,8 @@ export function Views({
                 <p className="text-sm text-muted-foreground">Avg. Sale</p>
                 <p className="text-2xl font-bold">
                   KSH{" "}
-                  {sales && sales.length > 0
-                    ? Math.round(
-                      sales.reduce(
-                        (sum: number, sale: Sale) => sum + sale.totalAmount,
-                        0
-                      ) / sales.length
-                    ).toLocaleString()
+                  {currentMonthTransactions > 0
+                    ? Math.round(currentMonthTotal / currentMonthTransactions).toLocaleString()
                     : "0"}
                 </p>
               </div>
@@ -285,20 +291,28 @@ export function Views({
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <Receipt className="h-5 w-5 text-primary" />
+              <CalendarIcon className="h-5 w-5 text-primary" />
               <div>
-                <p className="text-sm text-muted-foreground">Items Sold</p>
-                <p className="text-2xl font-bold">
-                  {sales ? sales.reduce(
-                    (sum: number, sale: Sale) =>
-                      sum +
-                      sale.items.reduce(
-                        (itemSum, item) => itemSum + item.quantity,
-                        0
-                      ),
-                    0
-                  ) : 0}
-                </p>
+                <p className="text-sm text-muted-foreground">Month Navigation</p>
+                <div className="flex items-center justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleMonthChange('prev')}
+                  >
+                    ←
+                  </Button>
+                  <span className="text-sm font-medium">
+                    {format(currentMonth, 'MMMM yyyy')}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleMonthChange('next')}
+                  >
+                    →
+                  </Button>
+                </div>
               </div>
             </div>
           </CardContent>
@@ -348,42 +362,33 @@ export function Views({
               </SelectContent>
             </Select>
           </div>
-
-          <div className="flex gap-2">
-            <Button
-              variant={selectedDate === "today" ? "default" : "outline"}
-              size="sm"
-              onClick={() => onDateChange("today")}
-            >
-              Today
-            </Button>
-            <Button
-              variant={selectedDate === "week" ? "default" : "outline"}
-              size="sm"
-              onClick={() => onDateChange("week")}
-            >
-              This Week
-            </Button>
-            <Button
-              variant={selectedDate === "month" ? "default" : "outline"}
-              size="sm"
-              onClick={() => onDateChange("month")}
-            >
-              This Month
-            </Button>
-            <Button
-              variant={selectedDate === "year" ? "default" : "outline"}
-              size="sm"
-              onClick={() => onDateChange("year")}
-            >
-              This Year
-            </Button>
-          </div>
         </div>
       </div>
 
       {/* Sales List */}
       <div className="space-y-4">
+        {/* Month Summary Header */}
+        <Card className="bg-muted/50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">
+                  Sales for {format(currentMonth, 'MMMM yyyy')}
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  {currentMonthTransactions} transactions • KSH {currentMonthTotal.toLocaleString()} total
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">Average per sale</p>
+                <p className="text-lg font-semibold">
+                  KSH {currentMonthTransactions > 0 ? Math.round(currentMonthTotal / currentMonthTransactions).toLocaleString() : '0'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {filteredSales.map((sale: Sale) => (
           <Card
             key={sale.id}

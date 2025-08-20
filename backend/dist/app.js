@@ -13,8 +13,9 @@ const inventory_1 = __importDefault(require("./routes/inventory"));
 const sales_1 = __importDefault(require("./routes/sales"));
 const reports_1 = __importDefault(require("./routes/reports"));
 const dailyReports_1 = __importDefault(require("./routes/dailyReports"));
+const expenses_1 = __importDefault(require("./routes/expenses"));
 const app = (0, express_1.default)();
-const allowedOrigin = 'http://13.49.240.213';
+const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:8080';
 const corsOptions = {
     origin: allowedOrigin,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -33,4 +34,5 @@ app.use('/inventory', inventory_1.default);
 app.use('/sales', sales_1.default);
 app.use('/sales/reports', reports_1.default);
 app.use('/daily-reports', dailyReports_1.default);
+app.use('/expenses', expenses_1.default);
 exports.default = app;
