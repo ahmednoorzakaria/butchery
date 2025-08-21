@@ -6,8 +6,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const app_1 = __importDefault(require("../app"));
 const http_1 = __importDefault(require("http"));
-const port = parseInt(process.env.PORT || '3005', 10); // ✅ Ensures it's a number
+const port = parseInt(process.env.PORT || '3001', 10); // ✅ Ensures it's a number
 const server = http_1.default.createServer(app_1.default);
 server.listen(port, '0.0.0.0', () => {
-    console.log(`Server running on http://192.168.0.111:${port}`);
+    console.log(`Server running on http://13.49.240.213:${port}`);
 });

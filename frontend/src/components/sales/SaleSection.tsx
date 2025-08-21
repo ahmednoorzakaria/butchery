@@ -197,20 +197,46 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
   const addItemToSale = () => {
     if (!selectedItem) return;
 
+    // Validate quantity based on unit type
+    let validQuantity = itemQuantity;
+    if (selectedItem.unit === 'pcs') {
+      // For pieces, ensure whole number
+      validQuantity = Math.round(itemQuantity);
+      if (validQuantity <= 0) {
+        toast({
+          title: "Invalid Quantity",
+          description: "Quantity for pieces must be a whole number greater than 0",
+          variant: "destructive"
+        });
+        return;
+      }
+    } else if (selectedItem.unit === 'kg' || selectedItem.unit === 'litres') {
+      // For kg and litres, allow decimals but ensure positive
+      if (itemQuantity <= 0) {
+        toast({
+          title: "Invalid Quantity",
+          description: `Quantity for ${selectedItem.unit} must be greater than 0`,
+          variant: "destructive"
+        });
+        return;
+      }
+      validQuantity = Math.round(itemQuantity * 100) / 100; // Round to 2 decimal places
+    }
+
     // Check if item already exists in sale
     const existingItemIndex = formData.items.findIndex(item => item.itemId === selectedItem.id);
     
     if (existingItemIndex >= 0) {
       // Update existing item
       const updatedItems = [...formData.items];
-      updatedItems[existingItemIndex].quantity += itemQuantity;
+      updatedItems[existingItemIndex].quantity += validQuantity;
       updatedItems[existingItemIndex].price = itemPrice;
       setFormData(prev => ({ ...prev, items: updatedItems }));
     } else {
       // Add new item
       const newItem: SaleItem = {
         itemId: selectedItem.id,
-        quantity: itemQuantity,
+        quantity: validQuantity,
         price: itemPrice,
         item: selectedItem
       };
@@ -552,11 +578,34 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     id="quantity"
                     type="number"
                     min="0.01"
-                    step="0.01"
+                    step={selectedItem?.unit === 'kg' || selectedItem?.unit === 'litres' ? "0.01" : "1"}
                     value={itemQuantity}
-                    onChange={(e) => setItemQuantity(parseFloat(e.target.value) || 1)}
+                    onChange={(e) => {
+                      const value = parseFloat(e.target.value);
+                      if (isNaN(value)) {
+                        setItemQuantity(1);
+                        return;
+                      }
+                      
+                      // Validate based on unit type
+                      if (selectedItem?.unit === 'pcs') {
+                        // For pieces, only allow whole numbers
+                        setItemQuantity(Math.max(1, Math.round(value)));
+                      } else {
+                        // For kg and litres, allow decimals
+                        setItemQuantity(Math.max(0.01, value));
+                      }
+                    }}
                     disabled={!selectedItem}
                   />
+                  {selectedItem && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Unit: {selectedItem.unit} 
+                      {selectedItem.unit === 'kg' || selectedItem.unit === 'litres' 
+                        ? ' (use decimals for precise amounts)' 
+                        : ' (use whole numbers)'}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -570,6 +619,11 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     onChange={(e) => setItemPrice(parseFloat(e.target.value) || 0)}
                     disabled={!selectedItem}
                   />
+                  {selectedItem && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Price per {selectedItem.unit}
+                    </p>
+                  )}
                 </div>
               </div>
 

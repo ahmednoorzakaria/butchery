@@ -487,23 +487,82 @@ router.get("/sales/:id/receipt", authenticateToken, async (req, res) => {
 
 // Sales Filter & Summary
 router.get("/sales", authenticateToken, async (req, res) => {
-  let { start, end } = req.query as { start?: string; end?: string };
+  let { start, end, page = 1, limit = 300 } = req.query as { 
+    start?: string; 
+    end?: string; 
+    page?: string; 
+    limit?: string; 
+  };
+  
+  // Parse pagination parameters
+  const pageNum = parseInt(page as string) || 1;
+  const limitNum = Math.min(parseInt(limit as string) || 300, 300); // Max 300 items per page
+  const skip = (pageNum - 1) * limitNum;
+  
   if (!start || isNaN(Date.parse(start))) start = subDays(new Date(), 7).toISOString();
   if (!end || isNaN(Date.parse(end))) end = new Date().toISOString();
 
   try {
+    // First, get the total count for pagination
+    const totalCount = await prisma.sale.count({
+      where: {
+        createdAt: { gte: new Date(start), lte: new Date(end) },
+      },
+    });
+
+    // Then get the paginated sales data with optimized includes
     const sales = await prisma.sale.findMany({
       where: {
         createdAt: { gte: new Date(start), lte: new Date(end) },
       },
       include: {
-        customer: true,
-        items: { include: { item: true } },
-        user: { select: { id: true, name: true } },
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          }
+        },
+        items: { 
+          include: { 
+            item: {
+              select: {
+                id: true,
+                name: true,
+                category: true,
+                unit: true,
+              }
+            } 
+          } 
+        },
+        user: { 
+          select: { 
+            id: true, 
+            name: true 
+          } 
+        },
       },
       orderBy: { createdAt: "desc" },
+      skip,
+      take: limitNum,
     });
-    res.json(sales);
+
+    // Calculate pagination info
+    const totalPages = Math.ceil(totalCount / limitNum);
+    const hasNextPage = pageNum < totalPages;
+    const hasPrevPage = pageNum > 1;
+
+    res.json({
+      sales,
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        totalCount,
+        hasNextPage,
+        hasPrevPage,
+        limit: limitNum,
+      }
+    });
   } catch (error) {
     console.error("Failed to fetch sales:", error);
     res.status(500).json({ error: "Server error fetching sales" });

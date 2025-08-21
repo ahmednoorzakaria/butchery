@@ -68,6 +68,10 @@ model Sale {
   customer            Customer              @relation(fields: [customerId], references: [id])
   user                User?                 @relation(fields: [userId], references: [id])
   items               SaleItem[]
+
+  @@index([createdAt])
+  @@index([customerId])
+  @@index([userId])
 }
 
 model SaleItem {
@@ -78,6 +82,9 @@ model SaleItem {
   price    Float
   item     InventoryItem @relation(fields: [itemId], references: [id])
   sale     Sale          @relation(fields: [saleId], references: [id])
+
+  @@index([saleId])
+  @@index([itemId])
 }
 
 model CustomerTransaction {
@@ -89,6 +96,10 @@ model CustomerTransaction {
   saleId     Int?
   customer   Customer @relation(fields: [customerId], references: [id])
   Sale       Sale?    @relation(fields: [saleId], references: [id])
+
+  @@index([customerId])
+  @@index([saleId])
+  @@index([createdAt])
 }
 
 model Expense {
@@ -101,6 +112,9 @@ model Expense {
   category    String   @default("General")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@index([category])
 }
 
 enum Role {
@@ -114,13 +128,6 @@ enum TransactionType {
 }
 
 enum PaymentType {
-  CASH
-  MPESA
-  CARD
-  TRANSFER
-}
-
-enum PaymentType_new {
   CASH
   MPESA
 }

@@ -32,18 +32,18 @@ import { cn } from "@/lib/utils";
 import { salesAPI } from "@/services/api";
 import { Receipt as ReceiptComponent } from "./Receipt";
 import { EditSaleDialog } from "./EditSaleDialog";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 
 // Types
 interface SaleItem {
   itemId: number;
   quantity: number;
   price: number;
-  item?: {
+  item: {
+    id: number;
     name: string;
-    unit?: string;
-    category?: string;
-    subtype?: string;
+    unit: string;
+    category: string;
   };
 }
 
@@ -91,11 +91,13 @@ export function Views({
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [currentPage, setCurrentPage] = useState(1);
+  const [searchInput, setSearchInput] = useState(searchTerm);
 
   // Check if current user is admin
   const isAdmin = localStorage.getItem("user_role") === "ADMIN";
 
-  // Fetch sales data with improved configuration
+  // Fetch sales data with pagination
   const { 
     data: salesResponse, 
     isLoading: salesLoading, 
@@ -103,11 +105,16 @@ export function Views({
     refetch,
     isFetching 
   } = useQuery({
-    queryKey: ["sales"],
+    queryKey: ["sales", currentPage],
     queryFn: async () => {
       console.log('Fetching sales...');
       try {
-        const response = await salesAPI.getAll();
+        const response = await salesAPI.getAll({ 
+          page: currentPage, 
+          limit: 300,
+          start: subDays(currentMonth, 30).toISOString(),
+          end: new Date().toISOString()
+        });
         console.log('Sales response:', response);
         return response;
       } catch (error) {
@@ -122,17 +129,45 @@ export function Views({
     refetchOnMount: true,
   });
 
+  // Extract sales data safely with pagination support
+  const sales = Array.isArray(salesResponse?.data?.sales) ? salesResponse.data.sales : 
+                Array.isArray(salesResponse?.data) ? salesResponse.data : [];
+  const pagination = salesResponse?.data?.pagination;
+  
   // Ensure query is executed when component mounts
   useEffect(() => {
     console.log('Views component mounted, triggering sales query...');
     refetch();
   }, [refetch]);
 
-  // Refetch data when month changes
+  // Refetch data when month or page changes
   useEffect(() => {
-    console.log('Month changed, refetching sales data...');
+    console.log('Month or page changed, refetching sales data...');
     refetch();
-  }, [currentMonth, refetch]);
+  }, [currentMonth, currentPage, refetch]);
+
+  // Handle search button click
+  const handleSearch = () => {
+    onSearchChange(searchInput);
+    setCurrentPage(1); // Reset to first page when searching
+  };
+
+  // Handle search input change
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchInput(e.target.value);
+  };
+
+  // Handle search input key press
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
+  // Handle page change
+  const handlePageChange = (newPage: number) => {
+    setCurrentPage(newPage);
+  };
 
   // Debug logging
   console.log('Views render state:', { 
@@ -143,10 +178,6 @@ export function Views({
     salesLength: salesResponse?.data?.length 
   });
 
-  // Extract sales data safely
-  const sales = Array.isArray(salesResponse?.data) ? salesResponse.data : 
-                Array.isArray(salesResponse) ? salesResponse : [];
-  
   // Filter sales based on search, date, and user
   const filteredSales = sales.filter((sale: Sale) => {
     const matchesSearch =
@@ -168,9 +199,9 @@ export function Views({
   });
 
   // Get unique users for filtering
-  const uniqueUsers = sales ? Array.from(
+  const uniqueUsers: User[] = sales ? Array.from(
     new Map(sales.map((sale: Sale) => [sale.userId, sale.user])).values()
-  ).filter(Boolean) : [];
+  ).filter((user): user is User => user !== null && user !== undefined) : [];
 
   // Calculate current month's total
   const currentMonthTotal = sales ? sales
@@ -341,8 +372,9 @@ export function Views({
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search by customer, sale ID, or username..."
-              value={searchTerm}
-              onChange={(e) => onSearchChange(e.target.value)}
+              value={searchInput}
+              onChange={handleSearchInputChange}
+              onKeyPress={handleSearchKeyPress}
               className="pl-10"
             />
           </div>
@@ -361,6 +393,9 @@ export function Views({
                 ))}
               </SelectContent>
             </Select>
+            <Button onClick={handleSearch} disabled={searchInput === searchTerm}>
+              Search
+            </Button>
           </div>
         </div>
       </div>
@@ -491,6 +526,30 @@ export function Views({
             </CardContent>
           </Card>
         ))}
+        {/* Pagination */}
+        {pagination && pagination.totalPages > 1 && (
+          <div className="flex justify-center mt-6">
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </Button>
+              <span className="text-sm font-medium">
+                Page {currentPage} of {pagination.totalPages}
+              </span>
+              <Button
+                variant="outline"
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === pagination.totalPages}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Sale Detail Dialog */}
@@ -654,7 +713,16 @@ export function Views({
             <p className="text-muted-foreground mb-4">
               Try adjusting your search or date filter
             </p>
-            <Button variant="outline">Clear Filters</Button>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                onSearchChange("");
+                setSearchInput("");
+                setCurrentPage(1);
+              }}
+            >
+              Clear Filters
+            </Button>
           </div>
         </Card>
       )}
@@ -668,6 +736,38 @@ export function Views({
           setEditingSale(null);
         }}
       />
+
+      {/* Pagination Controls */}
+      {pagination && pagination.totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6">
+          <div className="text-sm text-muted-foreground">
+            Showing {((pagination.currentPage - 1) * pagination.limit) + 1} to{" "}
+            {Math.min(pagination.currentPage * pagination.limit, pagination.totalCount)} of{" "}
+            {pagination.totalCount} results
+          </div>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(pagination.currentPage - 1)}
+              disabled={!pagination.hasPrevPage}
+            >
+              Previous
+            </Button>
+            <div className="text-sm">
+              Page {pagination.currentPage} of {pagination.totalPages}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handlePageChange(pagination.currentPage + 1)}
+              disabled={!pagination.hasNextPage}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
