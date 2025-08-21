@@ -59,13 +59,7 @@ export const DailyReports = () => {
     const userId = localStorage.getItem("user_id");
     const userRole = localStorage.getItem("user_role");
     
-    console.log("Auth Status:", {
-      hasToken: !!token,
-      tokenLength: token?.length || 0,
-      userId,
-      userRole,
-      tokenPreview: token ? token.substring(0, 20) + "..." : "None"
-    });
+
     
     return { hasToken: !!token, token, userId, userRole };
   };
@@ -79,7 +73,6 @@ export const DailyReports = () => {
   const testAPICall = async () => {
     try {
       const token = localStorage.getItem("auth_token");
-      console.log("Testing API call with token:", token ? "Present" : "Missing");
       
       // Test a simple authenticated endpoint
       const response = await fetch("http://13.49.240.213:3000/daily-reports/status", {
@@ -89,19 +82,14 @@ export const DailyReports = () => {
         }
       });
       
-      console.log("API Response Status:", response.status);
-      console.log("API Response Headers:", response.headers);
-      
       if (response.ok) {
         const data = await response.json();
-        console.log("API Response Data:", data);
         toast({
           title: "API Test Success",
           description: "API call successful - authentication working",
         });
       } else {
         const errorData = await response.text();
-        console.log("API Error Response:", errorData);
         toast({
           title: "API Test Failed",
           description: `Status: ${response.status} - ${errorData}`,
@@ -241,7 +229,7 @@ export const DailyReports = () => {
         return;
       }
 
-      console.log("Downloading report with token:", token.substring(0, 20) + "...");
+
       
       const reportDate = date || format(new Date(), 'yyyy-MM-dd');
       const response = await dailyReportsAPI.downloadReport(reportDate);
@@ -296,7 +284,7 @@ export const DailyReports = () => {
         return;
       }
 
-      console.log("Previewing report with token:", token.substring(0, 20) + "...");
+
       
       const reportDate = date || format(new Date(), 'yyyy-MM-dd');
       const response = await dailyReportsAPI.previewReport(reportDate);

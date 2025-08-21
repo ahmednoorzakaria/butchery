@@ -17,7 +17,6 @@ export class SchedulerService {
 
   async initialize() {
     try {
-      await this.pdfService.initialize();
       console.log('Scheduler service initialized successfully');
     } catch (error) {
       console.error('Error initializing scheduler service:', error);
@@ -26,7 +25,6 @@ export class SchedulerService {
 
   async cleanup() {
     try {
-      await this.pdfService.close();
       console.log('Scheduler service cleaned up successfully');
     } catch (error) {
       console.error('Error cleaning up scheduler service:', error);

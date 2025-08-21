@@ -15,12 +15,10 @@ const Login = () => {
 
       if (res.data?.token) {
         localStorage.setItem("auth_token", res.data.token);
-        //console.log("Login successful, token received:", res.data.token);
         localStorage.setItem("tokenExpiry", Date.now() + 24 * 60 * 60 * 1000); // 24h expiry
         localStorage.setItem("user_id", res.data.user.id); // ✅ Store user ID
         localStorage.setItem("user_role", res.data.user.role);
 
-        console.log("Login successful, token received:", res.data.user);
         navigate("/sales");
       } else {
         alert("Login failed. No token received.");

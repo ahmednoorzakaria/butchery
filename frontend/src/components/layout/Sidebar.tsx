@@ -1,12 +1,13 @@
-import { NavLink, useLocation } from "react-router-dom";
-import { Package, ShoppingCart, Users, BarChart3, User, Menu, Settings, ShoppingBag, HelpCircle, FileText, Receipt } from "lucide-react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { Package, ShoppingCart, Users, BarChart3, User, Menu, Settings, ShoppingBag, HelpCircle, FileText, Receipt, PlusCircle, List } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
 const primaryItems = [
   { name: "Inventory", href: "/inventory", icon: Package },
-  { name: "Sales", href: "/sales", icon: ShoppingCart },
+  { name: "Sale Creation", href: "/sale-creation", icon: PlusCircle },
+  { name: "Sale Management", href: "/sales", icon: List },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Expenses", href: "/expenses", icon: Receipt },
   { name: "Reports", href: "/reports", icon: BarChart3 },
@@ -14,14 +15,13 @@ const primaryItems = [
   { name: "Account", href: "/account", icon: User },
 ];
 
-
-
 interface SidebarProps {
   className?: string;
 }
 
 export function Sidebar({ className }: SidebarProps) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
@@ -62,8 +62,7 @@ export function Sidebar({ className }: SidebarProps) {
                 key={item.name}
                 to={item.href}
                 onClick={() => {
-                  console.log(`Navigating to: ${item.href}`);
-                  console.log(`Current location: ${location.pathname}`);
+                  // Navigation handled by NavLink
                 }}
                 className={cn(
                   "flex items-center rounded-lg px-3 py-2 transition-smooth",
@@ -79,14 +78,6 @@ export function Sidebar({ className }: SidebarProps) {
             );
           })}
         </div>
-
-        {/* Divider */}
-        <div className="py-2">
-          <div className="border-t border-border"></div>
-        </div>
-
-        {/* Secondary Navigation */}
-        
       </div>
     </aside>
   );

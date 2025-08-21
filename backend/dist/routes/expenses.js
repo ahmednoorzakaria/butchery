@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const authMiddleware_1 = require("../middleware/authMiddleware");
-const adminMiddleware_1 = require("../middleware/adminMiddleware");
 const client_1 = require("@prisma/client");
 const router = (0, express_1.Router)();
 const prisma = new client_1.PrismaClient();
@@ -68,7 +67,15 @@ router.get("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
     }
 });
 // Create new expense (Admin only)
-router.post("/", authMiddleware_1.authenticateToken, adminMiddleware_1.requireAdmin, async (req, res) => {
+router.post("/", authMiddleware_1.authenticateToken, async (req, res) => {
+    // Check if user is admin
+    const userRole = req.role;
+    if (userRole !== 'ADMIN') {
+        return res.status(403).json({
+            error: 'Admin access required',
+            message: 'Only administrators can create expenses'
+        });
+    }
     try {
         const { amount, reason, recipient, date, notes, category } = req.body;
         if (!amount || !reason || !recipient) {
@@ -94,7 +101,15 @@ router.post("/", authMiddleware_1.authenticateToken, adminMiddleware_1.requireAd
     }
 });
 // Update expense (Admin only)
-router.put("/:id", authMiddleware_1.authenticateToken, adminMiddleware_1.requireAdmin, async (req, res) => {
+router.put("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
+    // Check if user is admin
+    const userRole = req.role;
+    if (userRole !== 'ADMIN') {
+        return res.status(403).json({
+            error: 'Admin access required',
+            message: 'Only administrators can update expenses'
+        });
+    }
     try {
         const { id } = req.params;
         const { amount, reason, recipient, date, notes, category } = req.body;
@@ -123,7 +138,18 @@ router.put("/:id", authMiddleware_1.authenticateToken, adminMiddleware_1.require
     }
 });
 // Delete expense (Admin only)
-router.delete("/:id", authMiddleware_1.authenticateToken, adminMiddleware_1.requireAdmin, async (req, res) => {
+router.delete("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
+    // Check if user is admin
+    const userRole = req.role;
+    console.log('Delete expense - User ID:', req.userId, 'Role:', userRole);
+    if (userRole !== 'ADMIN') {
+        console.log('Delete expense - Access denied for user:', req.userId);
+        return res.status(403).json({
+            error: 'Admin access required',
+            message: 'Only administrators can delete expenses'
+        });
+    }
+    console.log('Delete expense - Access granted for user:', req.userId);
     try {
         const { id } = req.params;
         const existingExpense = await prisma.expense.findUnique({
@@ -162,7 +188,18 @@ router.get("/categories", authMiddleware_1.authenticateToken, async (req, res) =
     }
 });
 // Download monthly expense report (Admin only)
-router.get("/monthly/:year/:month/report", authMiddleware_1.authenticateToken, adminMiddleware_1.requireAdmin, async (req, res) => {
+router.get("/monthly/:year/:month/report", authMiddleware_1.authenticateToken, async (req, res) => {
+    // Check if user is admin
+    const userRole = req.role;
+    console.log('Download report - User ID:', req.userId, 'Role:', userRole);
+    if (userRole !== 'ADMIN') {
+        console.log('Download report - Access denied for user:', req.userId);
+        return res.status(403).json({
+            error: 'Admin access required',
+            message: 'Only administrators can download expense reports'
+        });
+    }
+    console.log('Download report - Access granted for user:', req.userId);
     try {
         const { year, month } = req.params;
         const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
@@ -195,7 +232,15 @@ router.get("/monthly/:year/:month/report", authMiddleware_1.authenticateToken, a
     }
 });
 // Download comprehensive monthly report (expenses + sales + other data) (Admin only)
-router.get("/monthly/:year/:month/comprehensive", authMiddleware_1.authenticateToken, adminMiddleware_1.requireAdmin, async (req, res) => {
+router.get("/monthly/:year/:month/comprehensive", authMiddleware_1.authenticateToken, async (req, res) => {
+    // Check if user is admin
+    const userRole = req.role;
+    if (userRole !== 'ADMIN') {
+        return res.status(403).json({
+            error: 'Admin access required',
+            message: 'Only administrators can download comprehensive reports'
+        });
+    }
     try {
         const { year, month } = req.params;
         const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);

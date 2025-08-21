@@ -1,40 +1,39 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
-import { SaleSection } from "@/components/sales/SaleSection";
 import { Views } from "@/components/sales/Views";
+import { useNavigate } from "react-router-dom";
 
 export default function SalesManagement() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState("all");
-  const [isNewSaleOpen, setIsNewSaleOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const navigate = useNavigate();
 
-  // Debug logging
-  console.log('SalesList render:', { isNewSaleOpen, isMounted });
+  // Check URL parameters for opening sale creation
+  useEffect(() => {
+    const action = searchParams.get('action');
+    if (action === 'create') {
+      // Redirect to the dedicated sale creation page
+      navigate('/sale-creation');
+      // Remove the action parameter from URL
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams, navigate]);
 
   // Ensure component is properly mounted before rendering
   useEffect(() => {
-    console.log('SalesList mounting...');
     setIsMounted(true);
     return () => {
-      console.log('SalesList unmounting...');
       setIsMounted(false);
     };
   }, []);
 
-  // Handle dialog state changes
-  const handleNewSaleOpenChange = (open: boolean) => {
-    console.log('SalesList handleNewSaleOpenChange:', open);
-    if (!open) {
-      // When closing, ensure we reset any potential state issues
-      setTimeout(() => {
-        setIsNewSaleOpen(false);
-      }, 100);
-    } else {
-      setIsNewSaleOpen(open);
-    }
+  const handleCreateSale = () => {
+    navigate('/sale-creation');
   };
 
   // Don't render until component is mounted
@@ -53,12 +52,12 @@ export default function SalesManagement() {
 
   // Error boundary for missing components
   try {
-    // This will throw an error if SaleSection is not properly imported
-    if (typeof SaleSection !== 'function') {
-      throw new Error('SaleSection component is not properly loaded');
+    // This will throw an error if Views is not properly imported
+    if (typeof Views !== 'function') {
+      throw new Error('Views component is not properly loaded');
     }
   } catch (error) {
-    console.error('Error loading SaleSection component:', error);
+    console.error('Error loading Views component:', error);
     return (
       <Layout title="Sales Management" showSearch={false}>
         <div className="flex items-center justify-center h-64">
@@ -66,7 +65,7 @@ export default function SalesManagement() {
             <div className="h-12 w-12 text-destructive mx-auto mb-4">⚠️</div>
             <h3 className="text-lg font-semibold mb-2">Component Loading Error</h3>
             <p className="text-muted-foreground mb-4">
-              The sale creation component failed to load. Please refresh the page.
+              The sales views component failed to load. Please refresh the page.
             </p>
             <Button onClick={() => window.location.reload()} variant="outline">
               Refresh Page
@@ -86,20 +85,17 @@ export default function SalesManagement() {
             <div>
               <h2 className="text-2xl font-bold tracking-tight">Sales Management</h2>
               <p className="text-muted-foreground">
-                Manage sales, track inventory, and monitor customer transactions
+                View, manage, and track all sales transactions and customer orders
               </p>
             </div>
-            <Button onClick={() => setIsNewSaleOpen(true)} className="flex items-center gap-2">
+            <Button 
+              onClick={handleCreateSale} 
+              className="flex items-center gap-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+            >
               <Plus className="h-4 w-4" />
               New Sale
             </Button>
           </div>
-
-          {/* New Sale Section */}
-          <SaleSection 
-            isOpen={isNewSaleOpen} 
-            onOpenChange={handleNewSaleOpenChange} 
-          />
 
           {/* Views Component */}
           <Views
@@ -112,7 +108,7 @@ export default function SalesManagement() {
       </Layout>
     );
   } catch (error) {
-    console.error('Error rendering SalesList:', error);
+    console.error('Error rendering SalesManagement:', error);
     return (
       <Layout title="Sales Management" showSearch={false}>
         <div className="flex items-center justify-center h-64">
@@ -120,7 +116,7 @@ export default function SalesManagement() {
             <div className="h-12 w-12 text-destructive mx-auto mb-4">⚠️</div>
             <h3 className="text-lg font-semibold mb-2">Rendering Error</h3>
             <p className="text-muted-foreground mb-4">
-              An error occurred while rendering the sales page. Please refresh the page.
+              An error occurred while rendering the sales management page. Please refresh the page.
             </p>
             <Button onClick={() => window.location.reload()} variant="outline">
               Refresh Page

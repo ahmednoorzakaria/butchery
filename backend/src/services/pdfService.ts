@@ -1,37 +1,37 @@
-import puppeteer, { Browser } from 'puppeteer';
+// import puppeteer, { Browser } from 'puppeteer';
 import { PrismaClient } from '@prisma/client';
 import { format, subDays } from 'date-fns';
 
 const prisma = new PrismaClient();
 
 export class PDFService {
-  private browser: Browser | null = null;
+  // private browser: Browser | null = null;
 
-  async initialize() {
-    try {
-      this.browser = await puppeteer.launch({
-        headless: true,
-        args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process'
-        ]
-      });
-    } catch (error) {
-      console.error('Failed to initialize Puppeteer browser:', error);
-      throw new Error('PDF generation service unavailable');
-    }
-  }
+  // async initialize() {
+  //   try {
+  //     this.browser = await puppeteer.launch({
+  //       headless: true,
+  //       args: [
+  //         '--no-sandbox', 
+  //         '--disable-setuid-sandbox',
+  //         '--disable-dev-shm-usage',
+  //         '--disable-gpu',
+  //         '--no-first-run',
+  //         '--no-zygote',
+  //         '--single-process'
+  //       ]
+  //     });
+  //   } catch (error) {
+  //     console.error('Failed to initialize Puppeteer browser:', error);
+  //     throw new Error('PDF generation service unavailable');
+  //   }
+  // }
 
-  async close() {
-    if (this.browser) {
-      await this.browser.close();
-    }
-  }
+  // async close() {
+  //   if (this.browser) {
+  //     await this.browser.close();
+  //   }
+  // }
 
   private async generateHTMLReport(date: Date) {
     const startDate = format(subDays(date, 1), 'yyyy-MM-dd');
@@ -366,37 +366,9 @@ export class PDFService {
     `;
   }
 
-  // Fallback method for simple PDF generation
-  private async generateSimplePDF(html: string): Promise<Buffer> {
-    // This is a basic fallback - in production you might want to use a different library
-    const simpleHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Daily Report</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 20px; }
-          .section { margin-bottom: 20px; }
-          .section-title { background-color: #f0f0f0; padding: 10px; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Daily Business Report</h1>
-          <p>Generated on: ${new Date().toLocaleDateString()}</p>
-        </div>
-        <div class="section">
-          <div class="section-title">Report Summary</div>
-          <p>PDF generation is currently experiencing issues. Please try again later or contact support.</p>
-        </div>
-      </body>
-      </html>
-    `;
-    
-    // Return a simple HTML buffer as fallback
-    return Buffer.from(simpleHtml, 'utf-8');
+  // Simple HTML generation method
+  private async generateSimpleHTML(html: string): Promise<Buffer> {
+    return Buffer.from(html, 'utf-8');
   }
 
   private async getSalesData(startDate: string, endDate: string) {
@@ -763,49 +735,15 @@ export class PDFService {
 
   async generateDailyReport(date: Date = new Date()): Promise<Buffer> {
     try {
-      // Try to initialize browser if not already done
-      if (!this.browser) {
-        await this.initialize();
-      }
-
-      if (!this.browser) {
-        throw new Error('Browser initialization failed');
-      }
-
+      // Generate HTML report directly
       const html = await this.generateHTMLReport(date);
-      const page = await this.browser!.newPage();
-      
-      // Set a reasonable timeout for page operations
-      page.setDefaultTimeout(120000); // 2 minutes
-      page.setDefaultNavigationTimeout(120000);
-      
-      // Set content and wait for it to render
-      await page.setContent(html, { waitUntil: 'networkidle0' });
-      
-      // Wait for dynamic content to render (using setTimeout instead of deprecated waitForTimeout)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const pdf = await page.pdf({
-        format: 'A4',
-        printBackground: true,
-        margin: {
-          top: '20mm',
-          right: '20mm',
-          bottom: '20mm',
-          left: '20mm'
-        },
-        preferCSSPageSize: true
-      });
-
-      await page.close();
-      return Buffer.from(pdf);
+      return await this.generateSimpleHTML(html);
     } catch (error) {
-      console.error('Error generating PDF report with Puppeteer:', error);
-      console.log('Falling back to simple HTML generation...');
+      console.error('Error generating HTML report:', error);
       
       try {
         // Try fallback method
-        return await this.generateSimplePDF('');
+        return await this.generateSimpleHTML('');
       } catch (fallbackError) {
         console.error('Fallback method also failed:', fallbackError);
         

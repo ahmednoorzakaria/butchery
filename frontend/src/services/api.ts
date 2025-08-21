@@ -30,10 +30,18 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Handle unauthorized access
-      localStorage.removeItem("auth_token");
-      window.location.href = "/login";
+      // Handle genuine authentication failures
+      const errorMessage = error.response?.data?.error;
+      
+      if (errorMessage === 'Access token missing' || errorMessage === 'Invalid token') {
+        // Genuine auth failure - log out
+        localStorage.removeItem("auth_token");
+        localStorage.removeItem("user_id");
+        localStorage.removeItem("user_role");
+        window.location.href = "/login";
+      }
     }
+    // For 403 errors (admin access required), don't log out - just reject the promise
     return Promise.reject(error);
   }
 );

@@ -8,7 +8,9 @@ const router = Router();
 const prisma = new PrismaClient();
 
 // auth.ts
-const JWT_SECRET = process.env.JWT_SECRET as string;
+const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_here_change_this_in_production";
+console.log("JWT_SECRET configured:", JWT_SECRET ? "YES" : "NO");
+console.log("JWT_SECRET length:", JWT_SECRET?.length || 0);
 
 // Register
 router.post("/register", async (req, res) => {
@@ -63,12 +65,23 @@ router.post("/login", async (req, res) => {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ error: "Invalid credentials" });
 
+    console.log("User found in database:", { id: user.id, name: user.name, email: user.email, role: user.role });
+
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ error: "Invalid credentials" });
 
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
+    console.log("Password verified successfully");
+    console.log("Creating JWT token for user:", { id: user.id, role: user.role });
+    
+    const tokenPayload = { userId: user.id, role: user.role };
+    console.log("JWT payload to be signed:", tokenPayload);
+    
+    const token = jwt.sign(tokenPayload, JWT_SECRET, {
       expiresIn: "6h",
     });
+    
+    console.log("JWT token created successfully");
+    console.log("Token length:", token.length);
     console.log("User logged in:", user.id);
 
     res.json({

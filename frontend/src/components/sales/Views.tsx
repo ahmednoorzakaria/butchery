@@ -91,13 +91,15 @@ export function Views({
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [currentPage, setCurrentPage] = useState(1);
   const [searchInput, setSearchInput] = useState(searchTerm);
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [accumulatedSales, setAccumulatedSales] = useState<Sale[]>([]);
 
   // Check if current user is admin
   const isAdmin = localStorage.getItem("user_role") === "ADMIN";
 
-  // Fetch sales data with pagination
+  // Fetch sales data with lazy loading
   const { 
     data: salesResponse, 
     isLoading: salesLoading, 
@@ -105,17 +107,33 @@ export function Views({
     refetch,
     isFetching 
   } = useQuery({
-    queryKey: ["sales", currentPage],
+    queryKey: ["sales", searchTerm, currentMonth],
     queryFn: async () => {
-      console.log('Fetching sales...');
       try {
+        // If searching for a specific sale ID, fetch without date restrictions
+        if (searchTerm && !isNaN(parseInt(searchTerm))) {
+          const response = await salesAPI.getAll({ 
+            page: 1, 
+            limit: 1000, // Higher limit for ID searches
+            start: undefined,
+            end: undefined
+          });
+          setHasMore(false); // No more data for ID searches
+          return response;
+        }
+        
+        // Regular month-based search with initial batch
         const response = await salesAPI.getAll({ 
-          page: currentPage, 
-          limit: 300,
+          page: 1, 
+          limit: 50, // Smaller initial batch for lazy loading
           start: subDays(currentMonth, 30).toISOString(),
           end: new Date().toISOString()
         });
-        console.log('Sales response:', response);
+        
+        // Check if there are more pages
+        const totalPages = response?.data?.pagination?.totalPages || 1;
+        setHasMore(totalPages > 1);
+        
         return response;
       } catch (error) {
         console.error('Error fetching sales:', error);
@@ -129,27 +147,52 @@ export function Views({
     refetchOnMount: true,
   });
 
-  // Extract sales data safely with pagination support
-  const sales = Array.isArray(salesResponse?.data?.sales) ? salesResponse.data.sales : 
-                Array.isArray(salesResponse?.data) ? salesResponse.data : [];
-  const pagination = salesResponse?.data?.pagination;
+  // Extract sales data safely and manage accumulated data
+  const initialSales = Array.isArray(salesResponse?.data?.sales) ? salesResponse.data.sales : 
+                      Array.isArray(salesResponse?.data) ? salesResponse.data : [];
+  
+  // Use accumulated sales for display, fallback to initial sales
+  const sales = accumulatedSales.length > 0 ? accumulatedSales : initialSales;
   
   // Ensure query is executed when component mounts
   useEffect(() => {
-    console.log('Views component mounted, triggering sales query...');
     refetch();
   }, [refetch]);
 
-  // Refetch data when month or page changes
+  // Update accumulated sales when initial data changes
   useEffect(() => {
-    console.log('Month or page changed, refetching sales data...');
+    if (initialSales.length > 0 && accumulatedSales.length === 0) {
+      setAccumulatedSales(initialSales);
+    }
+  }, [initialSales, accumulatedSales.length]);
+
+  // Add scroll event listener for infinite scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      if (window.innerHeight + document.documentElement.scrollTop >= document.documentElement.offsetHeight - 100) {
+        // User is near bottom, load more data
+        if (hasMore && !isLoadingMore && !salesLoading) {
+          loadMoreSales();
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [hasMore, isLoadingMore, salesLoading]);
+
+  // Refetch data when month changes
+  useEffect(() => {
+    setHasMore(true); // Reset hasMore when month changes
+    setAccumulatedSales([]); // Reset accumulated sales
     refetch();
-  }, [currentMonth, currentPage, refetch]);
+  }, [currentMonth, refetch]);
 
   // Handle search button click
   const handleSearch = () => {
     onSearchChange(searchInput);
-    setCurrentPage(1); // Reset to first page when searching
+    setHasMore(true); // Reset hasMore when searching
+    setAccumulatedSales([]); // Reset accumulated sales
   };
 
   // Handle search input change
@@ -164,29 +207,64 @@ export function Views({
     }
   };
 
-  // Handle page change
-  const handlePageChange = (newPage: number) => {
-    setCurrentPage(newPage);
+  // Load more sales data
+  const loadMoreSales = async () => {
+    if (isLoadingMore || !hasMore) return;
+    
+    setIsLoadingMore(true);
+    try {
+      // Calculate next page based on current data length
+      const nextPage = Math.floor(sales.length / 50) + 1;
+      
+      const response = await salesAPI.getAll({ 
+        page: nextPage, 
+        limit: 50,
+        start: subDays(currentMonth, 30).toISOString(),
+        end: new Date().toISOString()
+      });
+      
+      if (response?.data?.sales) {
+        // Append new sales to existing data
+        const newSales = response.data.sales;
+        setAccumulatedSales(prev => [...prev, ...newSales]);
+        
+        // Check if there are more pages
+        const totalPages = response.data.pagination?.totalPages || 1;
+        setHasMore(nextPage < totalPages);
+      }
+    } catch (error) {
+      console.error('Error loading more sales:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
   };
 
-  // Debug logging
-  console.log('Views render state:', { 
-    salesResponse, 
-    salesLoading, 
-    salesError, 
-    isFetching,
-    salesLength: salesResponse?.data?.length 
-  });
+  // Component state management
 
   // Filter sales based on search, date, and user
   const filteredSales = sales.filter((sale: Sale) => {
-    const matchesSearch =
-      searchTerm === "" ||
-      sale.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      sale.id.toString().includes(searchTerm) ||
-      (sale.user?.name && sale.user.name.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesSearch = (() => {
+      if (searchTerm === "") return true;
+      
+      // Check if search term is a number (exact sale ID match)
+      const searchAsNumber = parseInt(searchTerm);
+      if (!isNaN(searchAsNumber)) {
+        return sale.id === searchAsNumber;
+      }
+      
+      // For non-numeric searches, use includes for customer name and username
+      return (
+        sale.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (sale.user?.name && sale.user.name.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    })();
 
+    // If searching by ID, don't apply date restrictions
     const matchesDate = (() => {
+      if (searchTerm && !isNaN(parseInt(searchTerm))) {
+        return true; // Skip date filtering for ID searches
+      }
+      
       const saleDate = new Date(sale.createdAt);
       const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
@@ -206,6 +284,11 @@ export function Views({
   // Calculate current month's total
   const currentMonthTotal = sales ? sales
     .filter((sale: Sale) => {
+      // If searching by ID, don't apply date restrictions to summary
+      if (searchTerm && !isNaN(parseInt(searchTerm))) {
+        return true;
+      }
+      
       const saleDate = new Date(sale.createdAt);
       const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
@@ -216,6 +299,11 @@ export function Views({
   // Calculate current month's transaction count
   const currentMonthTransactions = sales ? sales
     .filter((sale: Sale) => {
+      // If searching by ID, don't apply date restrictions to summary
+      if (searchTerm && !isNaN(parseInt(searchTerm))) {
+        return true;
+      }
+      
       const saleDate = new Date(sale.createdAt);
       const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
       const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
@@ -408,10 +496,14 @@ export function Views({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold">
-                  Sales for {format(currentMonth, 'MMMM yyyy')}
+                  {searchTerm && !isNaN(parseInt(searchTerm)) 
+                    ? `Search Results for Sale #${searchTerm}`
+                    : `Sales for ${format(currentMonth, 'MMMM yyyy')}`
+                  }
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   {currentMonthTransactions} transactions • KSH {currentMonthTotal.toLocaleString()} total
+                  {searchTerm && !isNaN(parseInt(searchTerm)) && " (All time)"}
                 </p>
               </div>
               <div className="text-right">
@@ -526,27 +618,34 @@ export function Views({
             </CardContent>
           </Card>
         ))}
-        {/* Pagination */}
-        {pagination && pagination.totalPages > 1 && (
+
+        {/* Load More Button */}
+        {hasMore && (
           <div className="flex justify-center mt-6">
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </Button>
-              <span className="text-sm font-medium">
-                Page {currentPage} of {pagination.totalPages}
-              </span>
-              <Button
-                variant="outline"
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === pagination.totalPages}
-              >
-                Next
-              </Button>
+            <Button
+              variant="outline"
+              onClick={loadMoreSales}
+              disabled={isLoadingMore}
+              className="flex items-center gap-2"
+            >
+              {isLoadingMore ? (
+                <>
+                  <LoadingSpinner size="sm" />
+                  Loading...
+                </>
+              ) : (
+                'Load More Sales'
+              )}
+            </Button>
+          </div>
+        )}
+
+        {/* Loading indicator for infinite scroll */}
+        {isLoadingMore && (
+          <div className="flex justify-center mt-4">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <LoadingSpinner size="sm" />
+              <span>Loading more sales...</span>
             </div>
           </div>
         )}
@@ -718,7 +817,8 @@ export function Views({
               onClick={() => {
                 onSearchChange("");
                 setSearchInput("");
-                setCurrentPage(1);
+                setHasMore(true);
+                setAccumulatedSales([]);
               }}
             >
               Clear Filters
@@ -737,37 +837,7 @@ export function Views({
         }}
       />
 
-      {/* Pagination Controls */}
-      {pagination && pagination.totalPages > 1 && (
-        <div className="flex items-center justify-between mt-6">
-          <div className="text-sm text-muted-foreground">
-            Showing {((pagination.currentPage - 1) * pagination.limit) + 1} to{" "}
-            {Math.min(pagination.currentPage * pagination.limit, pagination.totalCount)} of{" "}
-            {pagination.totalCount} results
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(pagination.currentPage - 1)}
-              disabled={!pagination.hasPrevPage}
-            >
-              Previous
-            </Button>
-            <div className="text-sm">
-              Page {pagination.currentPage} of {pagination.totalPages}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handlePageChange(pagination.currentPage + 1)}
-              disabled={!pagination.hasNextPage}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }

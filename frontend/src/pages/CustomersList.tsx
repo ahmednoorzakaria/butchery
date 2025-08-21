@@ -106,10 +106,8 @@ export default function CustomerManagement() {
   } = useQuery({
     queryKey: ['customers'],
     queryFn: async () => {
-      console.log('Fetching customers...');
       try {
         const response = await customersAPI.getAll();
-        console.log('Customers response:', response);
         return response;
       } catch (error) {
         console.error('Error fetching customers:', error);
@@ -129,18 +127,10 @@ export default function CustomerManagement() {
 
   // Ensure query is executed when component mounts
   useEffect(() => {
-    console.log('CustomersList mounted, triggering query...');
     refetch();
   }, [refetch]);
 
-  // Debug logging
-  console.log('CustomersList render state:', { 
-    customers, 
-    isLoading, 
-    error, 
-    isFetching,
-    customersLength: customers?.length 
-  });
+  // Component state management
 
   // Fetch customer account data
   const { data: customerAccount, isLoading: isLoadingAccount } = useQuery({

@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/authMiddleware";
-import { requireAdmin } from "../middleware/adminMiddleware";
 import { PrismaClient } from "@prisma/client";
 
 const router = Router();
@@ -73,7 +72,15 @@ router.get("/:id", authenticateToken, async (req, res) => {
 });
 
 // Create new expense (Admin only)
-router.post("/", authenticateToken, requireAdmin, async (req, res) => {
+router.post("/", authenticateToken, async (req, res) => {
+  // Check if user is admin
+  const userRole = (req as any).role;
+  if (userRole !== 'ADMIN') {
+    return res.status(403).json({ 
+      error: 'Admin access required',
+      message: 'Only administrators can create expenses'
+    });
+  }
   try {
     const { amount, reason, recipient, date, notes, category } = req.body;
 
@@ -102,7 +109,15 @@ router.post("/", authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // Update expense (Admin only)
-router.put("/:id", authenticateToken, requireAdmin, async (req, res) => {
+router.put("/:id", authenticateToken, async (req, res) => {
+  // Check if user is admin
+  const userRole = (req as any).role;
+  if (userRole !== 'ADMIN') {
+    return res.status(403).json({ 
+      error: 'Admin access required',
+      message: 'Only administrators can update expenses'
+    });
+  }
   try {
     const { id } = req.params;
     const { amount, reason, recipient, date, notes, category } = req.body;
@@ -135,7 +150,20 @@ router.put("/:id", authenticateToken, requireAdmin, async (req, res) => {
 });
 
 // Delete expense (Admin only)
-router.delete("/:id", authenticateToken, requireAdmin, async (req, res) => {
+router.delete("/:id", authenticateToken, async (req, res) => {
+  // Check if user is admin
+  const userRole = (req as any).role;
+  console.log('Delete expense - User ID:', (req as any).userId, 'Role:', userRole);
+  
+  if (userRole !== 'ADMIN') {
+    console.log('Delete expense - Access denied for user:', (req as any).userId);
+    return res.status(403).json({ 
+      error: 'Admin access required',
+      message: 'Only administrators can delete expenses'
+    });
+  }
+  
+  console.log('Delete expense - Access granted for user:', (req as any).userId);
   try {
     const { id } = req.params;
 
@@ -179,7 +207,20 @@ router.get("/categories", authenticateToken, async (req, res) => {
 });
 
 // Download monthly expense report (Admin only)
-router.get("/monthly/:year/:month/report", authenticateToken, requireAdmin, async (req, res) => {
+router.get("/monthly/:year/:month/report", authenticateToken, async (req, res) => {
+  // Check if user is admin
+  const userRole = (req as any).role;
+  console.log('Download report - User ID:', (req as any).userId, 'Role:', userRole);
+  
+  if (userRole !== 'ADMIN') {
+    console.log('Download report - Access denied for user:', (req as any).userId);
+    return res.status(403).json({ 
+      error: 'Admin access required',
+      message: 'Only administrators can download expense reports'
+    });
+  }
+  
+  console.log('Download report - Access granted for user:', (req as any).userId);
   try {
     const { year, month } = req.params;
     const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
@@ -217,7 +258,15 @@ router.get("/monthly/:year/:month/report", authenticateToken, requireAdmin, asyn
 });
 
 // Download comprehensive monthly report (expenses + sales + other data) (Admin only)
-router.get("/monthly/:year/:month/comprehensive", authenticateToken, requireAdmin, async (req, res) => {
+router.get("/monthly/:year/:month/comprehensive", authenticateToken, async (req, res) => {
+  // Check if user is admin
+  const userRole = (req as any).role;
+  if (userRole !== 'ADMIN') {
+    return res.status(403).json({ 
+      error: 'Admin access required',
+      message: 'Only administrators can download comprehensive reports'
+    });
+  }
   try {
     const { year, month } = req.params;
     const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);

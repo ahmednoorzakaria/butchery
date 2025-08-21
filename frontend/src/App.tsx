@@ -9,6 +9,7 @@ import InventoryList from "./pages/InventoryList";
 import Reports from "./pages/Reports";
 import DailyReports from "./pages/DailyReports";
 import SalesList from "./pages/SalesList";
+import SaleCreation from "./pages/SaleCreation";
 import CustomersList from "./pages/CustomersList";
 import Expenses from "./pages/Expenses";
 import NotFound from "./pages/NotFound";
@@ -84,6 +85,14 @@ const App = () => (
             element={
               <ProtectedRoute allowedRoles={["ADMIN", "SALES"]}>
                 <SalesList />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/sale-creation"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "SALES"]}>
+                <SaleCreation />
               </ProtectedRoute>
             }
           />

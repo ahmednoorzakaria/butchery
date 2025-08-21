@@ -86,6 +86,8 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
   const [itemQuantity, setItemQuantity] = useState(1);
   const [itemPrice, setItemPrice] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [inputMode, setInputMode] = useState<'quantity' | 'totalAmount'>('quantity');
+  const [itemTotalAmount, setItemTotalAmount] = useState(0);
   
   // Search states
   const [customerSearchTerm, setCustomerSearchTerm] = useState("");
@@ -155,8 +157,15 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
       resetForm();
       onOpenChange(false);
     },
-    onError: (error: any) => {
-      const errorMessage = error.response?.data?.error || error.message || "Failed to create sale";
+    onError: (error: Error | { response?: { data?: { error?: string } } }) => {
+      let errorMessage = "Failed to create sale";
+      
+      if ('response' in error && error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      } else if ('message' in error && error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Error",
         description: errorMessage,
@@ -189,6 +198,8 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
     setSelectedItem(null);
     setItemQuantity(1);
     setItemPrice(0);
+    setInputMode('quantity');
+    setItemTotalAmount(0);
     setCustomerSearchTerm("");
     setItemSearchTerm("");
   };
@@ -247,6 +258,8 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
     setSelectedItem(null);
     setItemQuantity(1);
     setItemPrice(0);
+    setInputMode('quantity');
+    setItemTotalAmount(0);
   };
 
   // Remove item from sale
@@ -280,6 +293,8 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
     setSelectedItem(item);
     setItemPrice(item.sellPrice || 0);
     setItemQuantity(1);
+    setInputMode('quantity');
+    setItemTotalAmount(0);
   };
 
   // Handle form submission
@@ -334,6 +349,14 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
       setFormData(prev => ({ ...prev, paidAmount: totalAmount }));
     }
   }, [totalAmount]);
+
+  // Auto-calculate quantity when total amount changes
+  useEffect(() => {
+    if (inputMode === 'totalAmount' && selectedItem && itemPrice > 0 && itemTotalAmount > 0) {
+      const calculatedQuantity = itemTotalAmount / itemPrice;
+      setItemQuantity(calculatedQuantity);
+    }
+  }, [itemTotalAmount, itemPrice, selectedItem, inputMode]);
 
   // Reset form when dialog opens
   useEffect(() => {
@@ -491,122 +514,178 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Add Items</CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Choose between entering quantity or total amount. When using total amount, 
+                the quantity will be automatically calculated based on the price per unit.
+              </p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                 <div className="md:col-span-2">
-                   <Label htmlFor="item">Item</Label>
-                   <div className="space-y-2">
-                     <div className="relative">
-                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                       <Input
-                         placeholder="Search items by name, category, or subtype..."
-                         value={itemSearchTerm}
-                         onChange={(e) => setItemSearchTerm(e.target.value)}
-                         className="mb-2 pl-10 pr-10"
-                       />
-                       {itemSearchTerm && (
-                         <Button
-                           type="button"
-                           variant="ghost"
-                           size="sm"
-                           className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-                           onClick={() => setItemSearchTerm("")}
-                         >
-                           <X className="h-3 w-3" />
-                         </Button>
-                       )}
-                     </div>
-                     <Select
-                       value={selectedItem?.id.toString() || ""}
-                       onValueChange={(value) => {
-                         const item = filteredInventory.find(i => i.id.toString() === value);
-                         if (item) handleItemSelect(item);
-                       }}
-                     >
-                       <SelectTrigger>
-                         <SelectValue placeholder="Select an item" />
-                       </SelectTrigger>
-                       <SelectContent>
-                         {inventoryLoading ? (
-                           <div className="flex items-center justify-center p-4">
-                             <LoadingSpinner size="sm" />
-                           </div>
-                         ) : filteredInventory.length === 0 ? (
-                           <div className="p-4 text-center text-muted-foreground">
-                             {itemSearchTerm ? 'No items match your search' : 'No inventory items found.'}
-                             {!itemSearchTerm && (
-                               <div className="mt-2">
-                                 <Button 
-                                   type="button" 
-                                   variant="outline" 
-                                   size="sm"
-                                   onClick={() => {
-                                     toast({
-                                       title: "Info",
-                                       description: "Please add inventory items in the Inventory section first",
-                                     });
-                                   }}
-                                 >
-                                   Go to Inventory
-                                 </Button>
-                               </div>
-                             )}
-                           </div>
-                         ) : (
-                           filteredInventory
-                             .filter(item => item.quantity > 0)
-                             .map((item) => (
-                               <SelectItem key={item.id} value={item.id.toString()}>
-                                 <div className="flex items-center justify-between w-full">
-                                   <span>{item.name}</span>
-                                   <Badge variant="outline" className="ml-2">
-                                     {item.quantity} {item.unit}
-                                   </Badge>
-                                 </div>
-                               </SelectItem>
-                             ))
-                         )}
-                       </SelectContent>
-                     </Select>
-                   </div>
-                 </div>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="md:col-span-2">
+                  <Label htmlFor="item">Item</Label>
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search items by name, category, or subtype..."
+                        value={itemSearchTerm}
+                        onChange={(e) => setItemSearchTerm(e.target.value)}
+                        className="mb-2 pl-10 pr-10"
+                      />
+                      {itemSearchTerm && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-1 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                          onClick={() => setItemSearchTerm("")}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    <Select
+                      value={selectedItem?.id.toString() || ""}
+                      onValueChange={(value) => {
+                        const item = filteredInventory.find(i => i.id.toString() === value);
+                        if (item) handleItemSelect(item);
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select an item" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {inventoryLoading ? (
+                          <div className="flex items-center justify-center p-4">
+                            <LoadingSpinner size="sm" />
+                          </div>
+                        ) : filteredInventory.length === 0 ? (
+                          <div className="p-4 text-center text-muted-foreground">
+                            {itemSearchTerm ? 'No items match your search' : 'No inventory items found.'}
+                            {!itemSearchTerm && (
+                              <div className="mt-2">
+                                <Button 
+                                  type="button" 
+                                  variant="outline" 
+                                  size="sm"
+                                  onClick={() => {
+                                    toast({
+                                      title: "Info",
+                                      description: "Please add inventory items in the Inventory section first",
+                                    });
+                                  }}
+                                >
+                                  Go to Inventory
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          filteredInventory
+                            .filter(item => item.quantity > 0)
+                            .map((item) => (
+                              <SelectItem key={item.id} value={item.id.toString()}>
+                                <div className="flex items-center justify-between w-full">
+                                  <span>{item.name}</span>
+                                  <Badge variant="outline" className="ml-2">
+                                    {item.quantity} {item.unit}
+                                  </Badge>
+                                </div>
+                              </SelectItem>
+                            ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
                 <div>
-                  <Label htmlFor="quantity">Quantity</Label>
-                  <Input
-                    id="quantity"
-                    type="number"
-                    min="0.01"
-                    step={selectedItem?.unit === 'kg' || selectedItem?.unit === 'litres' ? "0.01" : "1"}
-                    value={itemQuantity}
-                    onChange={(e) => {
-                      const value = parseFloat(e.target.value);
-                      if (isNaN(value)) {
-                        setItemQuantity(1);
-                        return;
-                      }
-                      
-                      // Validate based on unit type
-                      if (selectedItem?.unit === 'pcs') {
-                        // For pieces, only allow whole numbers
-                        setItemQuantity(Math.max(1, Math.round(value)));
-                      } else {
-                        // For kg and litres, allow decimals
-                        setItemQuantity(Math.max(0.01, value));
-                      }
-                    }}
-                    disabled={!selectedItem}
-                  />
-                  {selectedItem && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Unit: {selectedItem.unit} 
-                      {selectedItem.unit === 'kg' || selectedItem.unit === 'litres' 
-                        ? ' (use decimals for precise amounts)' 
-                        : ' (use whole numbers)'}
-                    </p>
-                  )}
+                  <Label htmlFor="inputMode">Input Mode</Label>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    Choose how to specify the item amount
+                  </p>
+                  <Select
+                    value={inputMode}
+                    onValueChange={(value: 'quantity' | 'totalAmount') => setInputMode(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="quantity">Quantity</SelectItem>
+                      <SelectItem value="totalAmount">Total Amount</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {inputMode === 'quantity' ? (
+                  <div>
+                    <Label htmlFor="quantity">Quantity</Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Enter the quantity you want to purchase
+                    </p>
+                    <Input
+                      id="quantity"
+                      type="number"
+                      min="0.01"
+                      step={selectedItem?.unit === 'kg' || selectedItem?.unit === 'litres' ? "0.01" : "1"}
+                      value={itemQuantity}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value);
+                        if (isNaN(value)) {
+                          setItemQuantity(1);
+                          return;
+                        }
+                        
+                        // Validate based on unit type
+                        if (selectedItem?.unit === 'pcs') {
+                          // For pieces, only allow whole numbers
+                          setItemQuantity(Math.max(1, Math.round(value)));
+                        } else {
+                          // For kg and litres, allow decimals
+                          setItemQuantity(Math.max(0.01, value));
+                        }
+                      }}
+                      disabled={!selectedItem}
+                    />
+                    {selectedItem && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Unit: {selectedItem.unit} 
+                        {selectedItem.unit === 'kg' || selectedItem?.unit === 'litres' 
+                          ? ' (use decimals for precise amounts)' 
+                          : ' (use whole numbers)'}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <Label htmlFor="totalAmount">Total Amount (KSH)</Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Enter the total amount you want to spend. Quantity will be automatically calculated.
+                    </p>
+                    <Input
+                      id="totalAmount"
+                      type="number"
+                      min="0.01"
+                      step="0.01"
+                      value={itemTotalAmount}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value);
+                        if (isNaN(value)) {
+                          setItemTotalAmount(0);
+                          return;
+                        }
+                        setItemTotalAmount(Math.max(0.01, value));
+                      }}
+                      disabled={!selectedItem}
+                    />
+                    {selectedItem && itemPrice > 0 && itemTotalAmount > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Quantity: {(itemTotalAmount / itemPrice).toFixed(3)} {selectedItem.unit}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <Label htmlFor="price">Price per {selectedItem?.unit || 'unit'}</Label>
@@ -636,11 +715,31 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                       Available: {selectedItem.quantity} {selectedItem.unit} | 
                       Default Price: KSH {selectedItem.sellPrice?.toLocaleString() || 'N/A'}
                     </span>
+                    {inputMode === 'totalAmount' && itemPrice > 0 && itemTotalAmount > 0 && (
+                      <>
+                        <br />
+                        <span className="text-muted-foreground">
+                          Calculated Quantity: {(itemTotalAmount / itemPrice).toFixed(3)} {selectedItem.unit}
+                        </span>
+                      </>
+                    )}
+                    {inputMode === 'quantity' && itemPrice > 0 && itemQuantity > 0 && (
+                      <>
+                        <br />
+                        <span className="text-muted-foreground">
+                          Total Amount: KSH {(itemQuantity * itemPrice).toFixed(2)}
+                        </span>
+                      </>
+                    )}
                   </div>
                   <Button
                     type="button"
                     onClick={addItemToSale}
-                    disabled={!selectedItem || itemQuantity <= 0 || itemPrice <= 0}
+                    disabled={
+                      !selectedItem || 
+                      itemPrice <= 0 || 
+                      (inputMode === 'quantity' ? itemQuantity <= 0 : itemTotalAmount <= 0)
+                    }
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Add to Sale

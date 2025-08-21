@@ -83,11 +83,9 @@ router.get("/download/:date", authMiddleware_1.authenticateToken, async (req, re
     try {
         const { date } = req.params;
         const reportDate = date ? new Date(date) : new Date();
-        // Initialize PDF service if not already done
-        await pdfService.initialize();
         const pdfBuffer = await pdfService.generateDailyReport(reportDate);
-        const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.pdf`;
-        res.setHeader('Content-Type', 'application/pdf');
+        const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.html`;
+        res.setHeader('Content-Type', 'text/html');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
         res.setHeader('Content-Length', pdfBuffer.length);
         res.send(pdfBuffer);
@@ -102,10 +100,8 @@ router.get("/preview/:date", authMiddleware_1.authenticateToken, async (req, res
     try {
         const { date } = req.params;
         const reportDate = date ? new Date(date) : new Date();
-        // Initialize PDF service if not already done
-        await pdfService.initialize();
         const pdfBuffer = await pdfService.generateDailyReport(reportDate);
-        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Type', 'text/html');
         res.setHeader('Content-Length', pdfBuffer.length);
         res.send(pdfBuffer);
     }
@@ -158,8 +154,7 @@ router.post("/send-complete-report", authMiddleware_1.authenticateToken, async (
         if (!recipientEmail) {
             return res.status(400).json({ error: "Recipient email is required" });
         }
-        // Generate the daily report PDF
-        await pdfService.initialize();
+        // Generate the daily report HTML
         const pdfBuffer = await pdfService.generateDailyReport(new Date());
         // Get debt summary data
         const customers = await prisma.customer.findMany({

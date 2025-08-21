@@ -59,6 +59,9 @@ export default function Expenses() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
   const { toast } = useToast();
+  
+  // Check if current user is admin
+  const isAdmin = localStorage.getItem("user_role") === "ADMIN";
 
   // Form state
   const [formData, setFormData] = useState({
@@ -179,11 +182,20 @@ export default function Expenses() {
       });
       fetchExpenses();
       fetchMonthlyExpenses();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting expense:', error);
+      console.error('Error response:', error.response);
+      console.error('Error status:', error.response?.status);
+      console.error('Error data:', error.response?.data);
+      
+      let errorMessage = "Failed to delete expense";
+      if (error.response?.status === 403) {
+        errorMessage = error.response?.data?.message || "Admin access required to delete expenses";
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to delete expense",
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -232,11 +244,17 @@ export default function Expenses() {
         title: "Success",
         description: "Monthly report downloaded successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error downloading report:', error);
+      
+      let errorMessage = "Failed to download report";
+      if (error.response?.status === 403) {
+        errorMessage = error.response?.data?.message || "Admin access required to download reports";
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to download report",
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -263,11 +281,17 @@ export default function Expenses() {
         title: "Success",
         description: "Comprehensive report downloaded successfully"
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error downloading comprehensive report:', error);
+      
+      let errorMessage = "Failed to download comprehensive report";
+      if (error.response?.status === 403) {
+        errorMessage = error.response?.data?.message || "Admin access required to download reports";
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to download comprehensive report",
+        description: errorMessage,
         variant: "destructive"
       });
     }
@@ -353,6 +377,21 @@ export default function Expenses() {
           </Card>
         </div>
 
+        {/* Admin Notice */}
+        {!isAdmin && (
+          <Card className="border-blue-200 bg-blue-50">
+            <CardContent className="p-4">
+              <div className="flex items-center space-x-2 text-blue-800">
+                <div className="h-5 w-5 text-blue-600">ℹ️</div>
+                <p className="text-sm">
+                  <span className="font-medium">Note:</span> Only administrators can delete expenses and download reports. 
+                  Sales users can view expenses and add new ones.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Controls */}
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
           <div className="flex flex-col sm:flex-row gap-4 flex-1">
@@ -380,11 +419,21 @@ export default function Expenses() {
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={downloadMonthlyReport} variant="outline">
+            <Button 
+              onClick={downloadMonthlyReport} 
+              variant="outline"
+              disabled={!isAdmin}
+              title={!isAdmin ? "Admin access required" : ""}
+            >
               <Download className="h-4 w-4 mr-2" />
               Download Report
             </Button>
-            <Button onClick={downloadComprehensiveReport} variant="outline">
+            <Button 
+              onClick={downloadComprehensiveReport} 
+              variant="outline"
+              disabled={!isAdmin}
+              title={!isAdmin ? "Admin access required" : ""}
+            >
               <Download className="h-4 w-4 mr-2" />
               Comprehensive Report
             </Button>
@@ -562,30 +611,32 @@ export default function Expenses() {
                             >
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Expense</AlertDialogTitle>
-                                  <AlertDialogDescription>
-                                    Are you sure you want to delete this expense? This action cannot be undone.
-                                  </AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                  <AlertDialogAction
-                                    onClick={() => handleDelete(expense.id)}
-                                    className="bg-red-600 hover:bg-red-700"
-                                  >
-                                    Delete
-                                  </AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                            {isAdmin && (
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="sm">
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                      Are you sure you want to delete this expense? This action cannot be undone.
+                                    </AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction
+                                      onClick={() => handleDelete(expense.id)}
+                                      className="bg-red-600 hover:bg-red-700"
+                                    >
+                                      Delete
+                                    </AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
