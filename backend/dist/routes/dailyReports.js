@@ -84,8 +84,8 @@ router.get("/download/:date", authMiddleware_1.authenticateToken, async (req, re
         const { date } = req.params;
         const reportDate = date ? new Date(date) : new Date();
         const pdfBuffer = await pdfService.generateDailyReport(reportDate);
-        const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.html`;
-        res.setHeader('Content-Type', 'text/html');
+        const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.pdf`;
+        res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
         res.setHeader('Content-Length', pdfBuffer.length);
         res.send(pdfBuffer);
@@ -101,7 +101,7 @@ router.get("/preview/:date", authMiddleware_1.authenticateToken, async (req, res
         const { date } = req.params;
         const reportDate = date ? new Date(date) : new Date();
         const pdfBuffer = await pdfService.generateDailyReport(reportDate);
-        res.setHeader('Content-Type', 'text/html');
+        res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Length', pdfBuffer.length);
         res.send(pdfBuffer);
     }

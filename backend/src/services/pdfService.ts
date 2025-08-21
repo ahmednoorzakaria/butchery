@@ -1,39 +1,54 @@
-// import puppeteer, { Browser } from 'puppeteer';
 import { PrismaClient } from '@prisma/client';
 import { format, subDays } from 'date-fns';
+import PDFDocument from 'pdfkit';
 
 const prisma = new PrismaClient();
 
 export class PDFService {
-  // private browser: Browser | null = null;
+  async generateDailyReport(date: Date = new Date()): Promise<Buffer> {
+    try {
+      // Create a new PDF document
+      const doc = new PDFDocument({
+        size: 'A4',
+        margin: 50,
+        info: {
+          Title: `Daily Business Report - ${format(date, 'MMM dd, yyyy')}`,
+          Author: 'Butchery Management System',
+          Subject: 'Daily Business Report',
+          Keywords: 'business, report, daily, butchery',
+          CreationDate: new Date(),
+        }
+      });
 
-  // async initialize() {
-  //   try {
-  //     this.browser = await puppeteer.launch({
-  //       headless: true,
-  //       args: [
-  //         '--no-sandbox', 
-  //         '--disable-setuid-sandbox',
-  //         '--disable-dev-shm-usage',
-  //         '--disable-gpu',
-  //         '--no-first-run',
-  //         '--no-zygote',
-  //         '--single-process'
-  //       ]
-  //     });
-  //   } catch (error) {
-  //     console.error('Failed to initialize Puppeteer browser:', error);
-  //     throw new Error('PDF generation service unavailable');
-  //   }
-  // }
+      // Collect the PDF data chunks
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      
+      // When the PDF is finished, resolve with the buffer
+      const pdfPromise = new Promise<Buffer>((resolve) => {
+        doc.on('end', () => {
+          const result = Buffer.concat(chunks);
+          resolve(result);
+        });
+      });
 
-  // async close() {
-  //   if (this.browser) {
-  //     await this.browser.close();
-  //   }
-  // }
+      // Generate the PDF content
+      await this.generatePDFContent(doc, date);
+      
+      // Finalize the PDF
+      doc.end();
+      
+      // Return the generated PDF buffer
+      return await pdfPromise;
+    } catch (error) {
+      console.error('Error generating PDF report:', error);
+      
+      // Fallback: generate a simple text-based PDF
+      return await this.generateFallbackPDF(date);
+    }
+  }
 
-  private async generateHTMLReport(date: Date) {
+  private async generatePDFContent(doc: any, date: Date) {
     const startDate = format(subDays(date, 1), 'yyyy-MM-dd');
     const endDate = format(date, 'yyyy-MM-dd');
     
@@ -44,331 +59,389 @@ export class PDFService {
     const cashFlowData = await this.getCashFlowData(startDate, endDate);
     const customerData = await this.getCustomerData(startDate, endDate);
 
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Daily Business Report - ${format(date, 'MMM dd, yyyy')}</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-            color: #333;
-          }
-          .header {
-            text-align: center;
-            border-bottom: 2px solid #333;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-          }
-          .section {
-            margin-bottom: 30px;
-            page-break-inside: avoid;
-          }
-          .section-title {
-            background-color: #f0f0f0;
-            padding: 10px;
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 15px;
-          }
-          .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 15px;
-            margin-bottom: 20px;
-          }
-          .metric-card {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 5px;
-            text-align: center;
-            border: 1px solid #dee2e6;
-          }
-          .metric-value {
-            font-size: 24px;
-            font-weight: bold;
-            color: #007bff;
-          }
-          .metric-label {
-            font-size: 12px;
-            color: #6c757d;
-            margin-top: 5px;
-          }
-          .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-          }
-          .table th, .table td {
-            border: 1px solid #dee2e6;
-            padding: 8px;
-            text-align: left;
-          }
-          .table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-          }
-          .positive { color: #28a745; }
-          .negative { color: #dc3545; }
-          .warning { color: #ffc107; }
-          .page-break { page-break-before: always; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Daily Business Report</h1>
-          <h2>${format(date, 'EEEE, MMMM dd, yyyy')}</h2>
-          <p>Generated on ${format(new Date(), 'MMM dd, yyyy HH:mm:ss')}</p>
-        </div>
+    // Header
+    doc.fontSize(24)
+       .font('Helvetica-Bold')
+       .text('Daily Business Report', { align: 'center' });
+    
+    doc.moveDown(0.5);
+    doc.fontSize(16)
+       .font('Helvetica')
+       .text(format(date, 'EEEE, MMMM dd, yyyy'), { align: 'center' });
+    
+    doc.moveDown(0.5);
+    doc.fontSize(10)
+       .font('Helvetica-Oblique')
+       .text(`Generated on ${format(new Date(), 'MMM dd, yyyy HH:mm:ss')}`, { align: 'center' });
+    
+    doc.moveDown(2);
 
-        <!-- Sales Summary -->
-        <div class="section">
-          <div class="section-title">📊 Sales Summary</div>
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-value">KSH ${salesData.summary?.totalSales?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Sales</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">KSH ${salesData.summary?.totalPaid?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Collected</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">KSH ${salesData.summary?.outstandingAmount?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Outstanding</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">${salesData.summary?.numberOfSales || '0'}</div>
-              <div class="metric-label">Transactions</div>
-            </div>
-          </div>
-          
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-value positive">KSH ${salesData.summary?.netProfit?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Net Profit</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">${salesData.summary?.profitMargin?.toFixed(1) || '0'}%</div>
-              <div class="metric-label">Profit Margin</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">${salesData.summary?.collectionRate?.toFixed(1) || '0'}%</div>
-              <div class="metric-label">Collection Rate</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">KSH ${salesData.summary?.averageOrderValue?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Avg Order Value</div>
-            </div>
-          </div>
-        </div>
+    // Sales Summary Section
+    doc.fontSize(16)
+       .font('Helvetica-Bold')
+       .text('📊 Sales Summary');
+    
+    doc.moveDown(0.5);
+    
+    // Sales metrics in a grid format
+    const salesMetrics = [
+      ['Total Sales', `KSH ${salesData.summary?.totalSales?.toLocaleString() || '0'}`],
+      ['Total Collected', `KSH ${salesData.summary?.totalPaid?.toLocaleString() || '0'}`],
+      ['Outstanding', `KSH ${salesData.summary?.outstandingAmount?.toLocaleString() || '0'}`],
+      ['Transactions', `${salesData.summary?.numberOfSales || '0'}`],
+      ['Net Profit', `KSH ${salesData.summary?.netProfit?.toLocaleString() || '0'}`],
+      ['Profit Margin', `${salesData.summary?.profitMargin?.toFixed(1) || '0'}%`],
+      ['Collection Rate', `${salesData.summary?.collectionRate?.toFixed(1) || '0'}%`],
+      ['Avg Order Value', `KSH ${salesData.summary?.averageOrderValue?.toLocaleString() || '0'}`]
+    ];
 
-        <!-- Top Selling Items -->
-        <div class="section">
-          <div class="section-title">🏆 Top Selling Items</div>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Item</th>
-                <th>Quantity</th>
-                <th>Revenue</th>
-                <th>Profit</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${salesData.topItems?.slice(0, 10).map((item, index) => `
-                <tr>
-                  <td>${index + 1}</td>
-                  <td>${item.name}</td>
-                  <td>${item.quantity?.toFixed(2)}</td>
-                  <td>KSH ${item.revenue?.toLocaleString()}</td>
-                  <td class="positive">KSH ${item.profit?.toLocaleString()}</td>
-                </tr>
-              `).join('') || '<tr><td colspan="5">No data available</td></tr>'}
-            </tbody>
-          </table>
-        </div>
+    this.drawMetricsGrid(doc, salesMetrics, 2);
+    doc.moveDown(1);
 
-        <!-- Recent Sales -->
-        <div class="section">
-          <div class="section-title">🛒 Recent Sales</div>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Customer</th>
-                <th>Amount</th>
-                <th>Paid</th>
-                <th>Payment Type</th>
-                <th>Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${salesData.recentSales?.slice(0, 10).map(sale => `
-                <tr>
-                  <td>#${sale.id}</td>
-                  <td>${sale.customer}</td>
-                  <td>KSH ${sale.amount?.toLocaleString()}</td>
-                  <td>KSH ${sale.paid?.toLocaleString()}</td>
-                  <td>${sale.paymentType}</td>
-                  <td>${format(new Date(sale.date), 'MMM dd, HH:mm')}</td>
-                </tr>
-              `).join('') || '<tr><td colspan="6">No data available</td></tr>'}
-            </tbody>
-          </table>
-        </div>
+    // Top Selling Items
+    if (salesData.topItems && salesData.topItems.length > 0) {
+      doc.fontSize(16)
+         .font('Helvetica-Bold')
+         .text('🏆 Top Selling Items');
+      
+      doc.moveDown(0.5);
+      
+      const topItemsData = salesData.topItems.slice(0, 10).map((item, index) => [
+        `${index + 1}`,
+        item.name || 'Unknown Item',
+        item.quantity?.toFixed(2) || '0',
+        `KSH ${item.revenue?.toLocaleString() || '0'}`,
+        `KSH ${item.profit?.toLocaleString() || '0'}`
+      ]);
+      
+      const topItemsHeaders = ['Rank', 'Item', 'Quantity', 'Revenue', 'Profit'];
+      this.drawDataTable(doc, [topItemsHeaders, ...topItemsData]);
+      doc.moveDown(1);
+    } else {
+      doc.fontSize(14)
+         .font('Helvetica')
+         .fill('#6c757d')
+         .text('No sales data available for this period.', { align: 'center' });
+      doc.moveDown(1);
+    }
 
-        <div class="page-break"></div>
+    // Recent Sales
+    if (salesData.recentSales && salesData.recentSales.length > 0) {
+      doc.fontSize(16)
+         .font('Helvetica-Bold')
+         .text('🛒 Recent Sales');
+      
+      doc.moveDown(0.5);
+      
+      const recentSalesData = salesData.recentSales.slice(0, 10).map(sale => [
+        `#${sale.id}`,
+        sale.customer || 'Unknown Customer',
+        `KSH ${sale.amount?.toLocaleString() || '0'}`,
+        `KSH ${sale.paid?.toLocaleString() || '0'}`,
+        sale.paymentType || 'Unknown',
+        format(new Date(sale.date), 'MMM dd, HH:mm')
+      ]);
+      
+      const recentSalesHeaders = ['ID', 'Customer', 'Amount', 'Paid', 'Payment', 'Date'];
+      this.drawDataTable(doc, [recentSalesHeaders, ...recentSalesData]);
+      doc.moveDown(1);
+    } else {
+      doc.fontSize(14)
+         .font('Helvetica')
+         .fill('#6c757d')
+         .text('No recent sales data available for this period.', { align: 'center' });
+      doc.moveDown(1);
+    }
 
-        <!-- Profit & Loss -->
-        <div class="section">
-          <div class="section-title">💰 Profit & Loss Analysis</div>
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-value">KSH ${profitLossData.summary?.totalRevenue?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Revenue</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">KSH ${profitLossData.summary?.totalCost?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Cost</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value positive">KSH ${profitLossData.summary?.totalProfit?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Profit</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">${profitLossData.summary?.profitMargin?.toFixed(1) || '0'}%</div>
-              <div class="metric-label">Profit Margin</div>
-            </div>
-          </div>
-        </div>
+    // Add page break for next section
+    doc.addPage();
 
-        <!-- Top Performers -->
-        <div class="section">
-          <div class="section-title">⭐ Top Performing Items</div>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Item</th>
-                <th>Category</th>
-                <th>Quantity</th>
-                <th>Revenue</th>
-                <th>Profit</th>
-                <th>Margin</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${profitLossData.topPerformers?.slice(0, 10).map((item, index) => `
-                <tr>
-                  <td>${index + 1}</td>
-                  <td>${item.name}</td>
-                  <td>${item.category}</td>
-                  <td>${item.totalQuantity?.toFixed(2)}</td>
-                  <td>KSH ${item.totalRevenue?.toLocaleString()}</td>
-                  <td class="positive">KSH ${item.totalProfit?.toLocaleString()}</td>
-                  <td>${item.profitMargin?.toFixed(1)}%</td>
-                </tr>
-              `).join('') || '<tr><td colspan="7">No data available</td></tr>'}
-            </tbody>
-          </table>
-        </div>
+    // Profit & Loss Section
+    doc.fontSize(16)
+       .font('Helvetica-Bold')
+       .text('💰 Profit & Loss Analysis');
+    
+    doc.moveDown(0.5);
+    
+    const profitLossMetrics = [
+      ['Total Revenue', `KSH ${profitLossData.summary?.totalRevenue?.toLocaleString() || '0'}`],
+      ['Total Cost', `KSH ${profitLossData.summary?.totalCost?.toLocaleString() || '0'}`],
+      ['Total Profit', `KSH ${profitLossData.summary?.totalProfit?.toLocaleString() || '0'}`],
+      ['Profit Margin', `${profitLossData.summary?.profitMargin?.toFixed(1) || '0'}%`]
+    ];
 
-        <div class="page-break"></div>
+    this.drawMetricsGrid(doc, profitLossMetrics, 2);
+    doc.moveDown(1);
 
-        <!-- Inventory Status -->
-        <div class="section">
-          <div class="section-title">📦 Inventory Status</div>
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-value">${inventoryData.summary?.totalItems || '0'}</div>
-              <div class="metric-label">Total Items</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">KSH ${inventoryData.summary?.totalValue?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Value</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value positive">KSH ${inventoryData.summary?.potentialProfit?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Potential Profit</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">${inventoryData.summary?.categoryCount || '0'}</div>
-              <div class="metric-label">Categories</div>
-            </div>
-          </div>
-        </div>
+    // Top Performers
+    if (profitLossData.topPerformers && profitLossData.topPerformers.length > 0) {
+      doc.fontSize(16)
+         .font('Helvetica-Bold')
+         .text('⭐ Top Performing Items');
+      
+      doc.moveDown(0.5);
+      
+      const topPerformersData = profitLossData.topPerformers.slice(0, 10).map((item, index) => [
+        `${index + 1}`,
+        item.name || 'Unknown Item',
+        item.category || 'General',
+        item.totalQuantity?.toFixed(2) || '0',
+        `KSH ${item.totalRevenue?.toLocaleString() || '0'}`,
+        `KSH ${item.totalProfit?.toLocaleString() || '0'}`,
+        `${item.profitMargin?.toFixed(1) || '0'}%`
+      ]);
+      
+      const topPerformersHeaders = ['Rank', 'Item', 'Category', 'Quantity', 'Revenue', 'Profit', 'Margin'];
+      this.drawDataTable(doc, [topPerformersHeaders, ...topPerformersData]);
+      doc.moveDown(1);
+    } else {
+      doc.fontSize(14)
+         .font('Helvetica')
+         .fill('#6c757d')
+         .text('No profit/loss data available for this period.', { align: 'center' });
+      doc.moveDown(1);
+    }
 
-        <!-- Cash Flow -->
-        <div class="section">
-          <div class="section-title">💳 Cash Flow Summary</div>
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-value">KSH ${cashFlowData.summary?.totalRevenue?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Revenue</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value positive">KSH ${cashFlowData.summary?.totalCollected?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Collected</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value negative">KSH ${cashFlowData.summary?.totalOutstanding?.toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Outstanding</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">${cashFlowData.summary?.collectionRate?.toFixed(1) || '0'}%</div>
-              <div class="metric-label">Collection Rate</div>
-            </div>
-          </div>
-        </div>
+    // Add page break for next section
+    doc.addPage();
 
-        <!-- Customer Analysis -->
-        <div class="section">
-          <div class="section-title">👥 Customer Analysis</div>
-          <div class="metrics-grid">
-            <div class="metric-card">
-              <div class="metric-value">${customerData.totalCustomers || '0'}</div>
-              <div class="metric-label">Total Customers</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">${customerData.activeCustomers || '0'}</div>
-              <div class="metric-label">Active Customers</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">KSH ${customerData.customers?.reduce((sum, c) => sum + c.totalSpent, 0).toLocaleString() || '0'}</div>
-              <div class="metric-label">Total Spent</div>
-            </div>
-            <div class="metric-card">
-              <div class="metric-value">${customerData.customers?.length || '0'}</div>
-              <div class="metric-label">Customers in Period</div>
-            </div>
-          </div>
-        </div>
+    // Inventory Status
+    doc.fontSize(16)
+       .font('Helvetica-Bold')
+       .text('📦 Inventory Status');
+    
+    doc.moveDown(0.5);
+    
+    const inventoryMetrics = [
+      ['Total Items', `${inventoryData.summary?.totalItems || '0'}`],
+      ['Total Value', `KSH ${inventoryData.summary?.totalValue?.toLocaleString() || '0'}`],
+      ['Potential Profit', `KSH ${inventoryData.summary?.potentialProfit?.toLocaleString() || '0'}`],
+      ['Categories', `${inventoryData.summary?.categoryCount || '0'}`]
+    ];
 
-        <!-- Debt Summary -->
-        <div class="section">
-          <div class="section-title">⚠️ Debt Summary</div>
-          ${await this.getDebtSummaryHTML()}
-        </div>
+    this.drawMetricsGrid(doc, inventoryMetrics, 2);
+    doc.moveDown(1);
 
-        <!-- Footer -->
-        <div class="section" style="margin-top: 50px; text-align: center; border-top: 1px solid #dee2e6; padding-top: 20px;">
-          <p style="color: #6c757d; font-size: 12px;">
-            This report was automatically generated by the Butchery Management System.<br>
-            For questions or support, please contact your system administrator.
-          </p>
-        </div>
-      </body>
-      </html>
-    `;
+    // Cash Flow
+    doc.fontSize(16)
+       .font('Helvetica-Bold')
+       .text('💳 Cash Flow Summary');
+    
+    doc.moveDown(0.5);
+    
+    const cashFlowMetrics = [
+      ['Total Revenue', `KSH ${cashFlowData.summary?.totalRevenue?.toLocaleString() || '0'}`],
+      ['Total Collected', `KSH ${cashFlowData.summary?.totalCollected?.toLocaleString() || '0'}`],
+      ['Total Outstanding', `KSH ${cashFlowData.summary?.totalOutstanding?.toLocaleString() || '0'}`],
+      ['Collection Rate', `${cashFlowData.summary?.collectionRate?.toFixed(1) || '0'}%`]
+    ];
+
+    this.drawMetricsGrid(doc, cashFlowMetrics, 2);
+    doc.moveDown(1);
+
+    // Customer Analysis
+    doc.fontSize(16)
+       .font('Helvetica-Bold')
+       .text('👥 Customer Analysis');
+    
+    doc.moveDown(0.5);
+    
+    const customerMetrics = [
+      ['Total Customers', `${customerData.totalCustomers || '0'}`],
+      ['Active Customers', `${customerData.activeCustomers || '0'}`],
+      ['Total Spent', `KSH ${customerData.customers?.reduce((sum, c) => sum + c.totalSpent, 0).toLocaleString() || '0'}`],
+      ['Customers in Period', `${customerData.customers?.length || '0'}`]
+    ];
+
+    this.drawMetricsGrid(doc, customerMetrics, 2);
+    doc.moveDown(1);
+
+    // Debt Summary
+    doc.fontSize(16)
+       .font('Helvetica-Bold')
+       .text('⚠️ Debt Summary');
+    
+    doc.moveDown(0.5);
+    
+    const debtSummary = await this.getDebtSummaryData();
+    if (debtSummary) {
+      const debtMetrics = [
+        ['Total Outstanding', `KSH ${debtSummary.totalOutstanding.toLocaleString()}`],
+        ['Customers with Debt', `${debtSummary.customerCount}`],
+        ['Average Debt', `KSH ${debtSummary.averageDebt.toFixed(0)}`]
+      ];
+
+      this.drawMetricsGrid(doc, debtMetrics, 2);
+      doc.moveDown(1);
+
+      // Top debtors table
+      if (debtSummary.topDebtors.length > 0) {
+        doc.fontSize(14)
+           .font('Helvetica-Bold')
+           .text('Top Debtors:');
+        
+        doc.moveDown(0.5);
+        
+        const debtorsData = debtSummary.topDebtors.slice(0, 10).map((debtor, index) => [
+          `${index + 1}`,
+          debtor.name,
+          `KSH ${Math.abs(debtor.balance).toLocaleString()}`
+        ]);
+        
+        const debtorsHeaders = ['Rank', 'Customer Name', 'Outstanding Balance'];
+        this.drawDataTable(doc, [debtorsHeaders, ...debtorsData]);
+      }
+    }
+
+    // Footer
+    doc.moveDown(2);
+    doc.fontSize(10)
+       .font('Helvetica-Oblique')
+       .text('This report was automatically generated by the Butchery Management System.', { align: 'center' });
+    
+    doc.moveDown(0.5);
+    doc.text('For questions or support, please contact your system administrator.', { align: 'center' });
   }
 
-  // Simple HTML generation method
-  private async generateSimpleHTML(html: string): Promise<Buffer> {
-    return Buffer.from(html, 'utf-8');
+  // Draw metrics in a grid format (2 columns)
+  private drawMetricsGrid(doc: any, data: string[][], columns: number) {
+    const pageWidth = doc.page.width - 100; // 50px margin on each side
+    const colWidth = pageWidth / columns;
+    const rowHeight = 30;
+    const startX = doc.x;
+    const startY = doc.y;
+    
+    data.forEach((row, rowIndex) => {
+      const y = startY + (rowIndex * rowHeight);
+      
+      // Draw background rectangle for each metric
+      doc.rect(startX, y, colWidth, rowHeight)
+         .fill('#f8f9fa');
+      
+      // Draw border
+      doc.rect(startX, y, colWidth, rowHeight)
+         .stroke();
+      
+      // Add label
+      doc.fontSize(10)
+         .font('Helvetica-Bold')
+         .fill('#495057')
+         .text(row[0], startX + 10, y + 5, {
+           width: colWidth - 20,
+           align: 'left'
+         });
+      
+      // Add value
+      doc.fontSize(12)
+         .font('Helvetica-Bold')
+         .fill('#007bff')
+         .text(row[1], startX + 10, y + 15, {
+           width: colWidth - 20,
+           align: 'left'
+         });
+    });
+    
+    // Update document position
+    doc.y = startY + (data.length * rowHeight) + 10;
+  }
+
+  // Draw data tables with proper formatting
+  private drawDataTable(doc: any, data: string[][]) {
+    if (data.length === 0) return;
+    
+    const pageWidth = doc.page.width - 100; // 50px margin on each side
+    const colCount = data[0].length;
+    const colWidth = pageWidth / colCount;
+    const rowHeight = 25;
+    const startX = doc.x;
+    const startY = doc.y;
+    
+    // Draw header row
+    const headerY = startY;
+    doc.rect(startX, headerY, pageWidth, rowHeight)
+       .fill('#e9ecef');
+    doc.rect(startX, headerY, pageWidth, rowHeight)
+       .stroke();
+    
+    // Add header text
+    data[0].forEach((header, colIndex) => {
+      const x = startX + (colIndex * colWidth);
+      doc.fontSize(10)
+         .font('Helvetica-Bold')
+         .fill('#495057')
+         .text(header, x + 5, headerY + 5, {
+           width: colWidth - 10,
+           align: 'left'
+         });
+    });
+    
+    // Draw data rows
+    for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
+      const row = data[rowIndex];
+      const y = startY + (rowIndex * rowHeight);
+      
+      // Alternate row colors
+      if (rowIndex % 2 === 0) {
+        doc.rect(startX, y, pageWidth, rowHeight)
+           .fill('#f8f9fa');
+      }
+      
+      // Draw row border
+      doc.rect(startX, y, pageWidth, rowHeight)
+         .stroke();
+      
+      // Add row data
+      row.forEach((cell, colIndex) => {
+        const x = startX + (colIndex * colWidth);
+        doc.fontSize(9)
+           .font('Helvetica')
+           .fill('#212529')
+           .text(cell, x + 5, y + 5, {
+             width: colWidth - 10,
+             align: 'left'
+           });
+      });
+    }
+    
+    // Update document position
+    doc.y = startY + (data.length * rowHeight) + 10;
+  }
+
+  private async getDebtSummaryData() {
+    try {
+      const customers = await prisma.customer.findMany({
+        include: { transactions: true }
+      });
+
+      const debtData = customers.map(customer => {
+        const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+        return {
+          customerId: customer.id,
+          name: customer.name,
+          balance
+        };
+      }).filter(customer => customer.balance < 0);
+
+      if (debtData.length === 0) {
+        return null;
+      }
+
+      const totalOutstanding = debtData.reduce((sum, customer) => sum + Math.abs(customer.balance), 0);
+      const customerCount = debtData.length;
+      const averageDebt = totalOutstanding / customerCount;
+      
+      const topDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+
+      return {
+        totalOutstanding,
+        customerCount,
+        averageDebt,
+        topDebtors
+      };
+    } catch (error) {
+      console.error('Error fetching debt summary data:', error);
+      return null;
+    }
   }
 
   private async getSalesData(startDate: string, endDate: string) {
@@ -647,134 +720,97 @@ export class PDFService {
     }
   }
 
-  private async getDebtSummaryHTML(): Promise<string> {
-    try {
-      const customers = await prisma.customer.findMany({
-        include: { transactions: true }
-      });
-
-      const debtData = customers.map(customer => {
-        const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
-        return {
-          customerId: customer.id,
-          name: customer.name,
-          balance
-        };
-      }).filter(customer => customer.balance < 0); // Only customers with debt
-
-      if (debtData.length === 0) {
-        return `
-          <div style="text-align: center; padding: 20px; color: #28a745;">
-            <h3>✅ No Outstanding Debts</h3>
-            <p>All customers are up to date with their payments.</p>
-          </div>
-        `;
-      }
-
-      const totalOutstanding = debtData.reduce((sum, customer) => sum + Math.abs(customer.balance), 0);
-      const customerCount = debtData.length;
-      const averageDebt = totalOutstanding / customerCount;
-      
-      // Sort by debt amount (highest first)
-      const topDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
-
-      return `
-        <div class="metrics-grid">
-          <div class="metric-card">
-            <div class="metric-value negative">KSH ${totalOutstanding.toLocaleString()}</div>
-            <div class="metric-label">Total Outstanding</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-value negative">${customerCount}</div>
-            <div class="metric-label">Customers with Debt</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-value negative">KSH ${averageDebt.toFixed(0)}</div>
-            <div class="metric-label">Average Debt</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-value warning">${topDebtors.length > 0 ? topDebtors[0].name.substring(0, 15) + '...' : 'N/A'}</div>
-            <div class="metric-label">Highest Debtor</div>
-          </div>
-        </div>
-
-        ${topDebtors.length > 0 ? `
-        <div style="margin-top: 20px;">
-          <h4 style="color: #856404; margin-bottom: 15px;">Complete List of Debtors (${topDebtors.length} customers):</h4>
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th>Customer Name</th>
-                <th>Outstanding Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${topDebtors.map((debtor, index) => `
-                <tr>
-                  <td style="text-align: center;">${index + 1}</td>
-                  <td>${debtor.name}</td>
-                  <td class="negative" style="text-align: right; font-weight: bold;">KSH ${Math.abs(debtor.balance).toLocaleString()}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-        ` : ''}
-      `;
-    } catch (error) {
-      console.error('Error generating debt summary HTML:', error);
-      return `
-        <div style="text-align: center; padding: 20px; color: #6c757d;">
-          <h3>⚠️ Error Loading Debt Data</h3>
-          <p>Unable to load debt summary information.</p>
-        </div>
-      `;
-    }
-  }
-
-  async generateDailyReport(date: Date = new Date()): Promise<Buffer> {
-    try {
-      // Generate HTML report directly
-      const html = await this.generateHTMLReport(date);
-      return await this.generateSimpleHTML(html);
-    } catch (error) {
-      console.error('Error generating HTML report:', error);
-      
-      try {
-        // Try fallback method
-        return await this.generateSimpleHTML('');
-      } catch (fallbackError) {
-        console.error('Fallback method also failed:', fallbackError);
-        
-        // Final fallback - return a simple text-based report
-        const simpleReport = this.generateTextReport(date);
-        return Buffer.from(simpleReport, 'utf-8');
-      }
-    }
-  }
-
-  // Generate a simple text-based report as final fallback
-  private generateTextReport(date: Date): string {
+  private async generateFallbackPDF(date: Date): Promise<Buffer> {
     const reportDate = format(date, 'EEEE, MMMM dd, yyyy');
     const currentTime = format(new Date(), 'MMM dd, yyyy HH:mm:ss');
     
-    return `
-DAILY BUSINESS REPORT
-${reportDate}
-Generated on: ${currentTime}
+    const doc = new PDFDocument({
+      size: 'A4',
+      margin: 50,
+      info: {
+        Title: `Daily Business Report - ${format(date, 'MMM dd, yyyy')}`,
+        Author: 'Butchery Management System',
+        Subject: 'Daily Business Report',
+        Keywords: 'business, report, daily, butchery',
+        CreationDate: new Date(),
+      }
+    });
 
-===========================================
+    // Collect the PDF data chunks
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk) => chunks.push(chunk));
+    
+    // When the PDF is finished, resolve with the buffer
+    const pdfPromise = new Promise<Buffer>((resolve) => {
+      doc.on('end', () => {
+        const result = Buffer.concat(chunks);
+        resolve(result);
+      });
+    });
 
-PDF generation is currently experiencing technical difficulties.
-Please try again later or contact your system administrator.
+    // Header
+    doc.fontSize(20)
+       .font('Helvetica-Bold')
+       .text('DAILY BUSINESS REPORT', { align: 'center' });
+    
+    doc.moveDown(0.5);
+    doc.fontSize(14)
+       .font('Helvetica')
+       .text(reportDate, { align: 'center' });
+    
+    doc.moveDown(0.5);
+    doc.fontSize(10)
+       .font('Helvetica-Oblique')
+       .text(`Generated on: ${currentTime}`, { align: 'center' });
+    
+    doc.moveDown(2);
 
-For immediate access to your business data, please use the web interface.
+    // Error message
+    doc.fontSize(14)
+       .font('Helvetica-Bold')
+       .fill('#dc3545')
+       .text('⚠️ PDF Generation Error', { align: 'center' });
+    
+    doc.moveDown(1);
+    doc.fontSize(12)
+       .font('Helvetica')
+       .fill('#6c757d')
+       .text('The system encountered an error while generating your detailed business report.', { align: 'center' });
+    
+    doc.moveDown(0.5);
+    doc.text('Please try again later or contact your system administrator for assistance.', { align: 'center' });
 
-===========================================
+    doc.moveDown(2);
+    
+    // Instructions
+    doc.fontSize(12)
+       .font('Helvetica-Bold')
+       .fill('#495057')
+       .text('What you can do:', { align: 'left' });
+    
+    doc.moveDown(0.5);
+    doc.fontSize(10)
+       .font('Helvetica')
+       .fill('#6c757d')
+       .text('• Try generating the report again in a few minutes', { align: 'left' });
+    doc.moveDown(0.3);
+    doc.text('• Check your internet connection', { align: 'left' });
+    doc.moveDown(0.3);
+    doc.text('• Contact your system administrator if the issue persists', { align: 'left' });
+    doc.moveDown(0.3);
+    doc.text('• Use the web interface to view your business data', { align: 'left' });
 
-This report was automatically generated by the Butchery Management System.
-For questions or support, please contact your system administrator.
-    `;
+    // Footer
+    doc.moveDown(2);
+    doc.fontSize(10)
+       .font('Helvetica-Oblique')
+       .fill('#6c757d')
+       .text('This report was automatically generated by the Butchery Management System.', { align: 'center' });
+    
+    doc.moveDown(0.5);
+    doc.text('For questions or support, please contact your system administrator.', { align: 'center' });
+
+    doc.end();
+    return await pdfPromise;
   }
 }

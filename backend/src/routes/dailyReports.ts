@@ -89,9 +89,9 @@ router.get("/download/:date", authenticateToken, async (req, res) => {
     
     const pdfBuffer = await pdfService.generateDailyReport(reportDate);
     
-    const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.html`;
+    const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.pdf`;
     
-    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Length', pdfBuffer.length);
     
@@ -110,7 +110,7 @@ router.get("/preview/:date", authenticateToken, async (req, res) => {
     
     const pdfBuffer = await pdfService.generateDailyReport(reportDate);
     
-    res.setHeader('Content-Type', 'text/html');
+    res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', pdfBuffer.length);
     
     res.send(pdfBuffer);
