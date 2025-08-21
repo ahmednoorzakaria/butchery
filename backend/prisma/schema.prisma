@@ -130,4 +130,6 @@ enum TransactionType {
 enum PaymentType {
   CASH
   MPESA
+  CARD      // Legacy - no longer accepted for new payments
+  TRANSFER  // Legacy - no longer accepted for new payments
 }

@@ -377,12 +377,29 @@ router.post("/customers/:id/payments", authenticateToken, async (req, res) => {
   const customerId = parseInt(req.params.id);
   const { amount, paymentType } = req.body;
   if (!amount || isNaN(amount)) return res.status(400).json({ error: "Valid amount is required" });
+  
+  // Validate payment type - only CASH or MPESA allowed
+  if (!paymentType || !['CASH', 'MPESA'].includes(paymentType)) {
+    return res.status(400).json({ 
+      error: "Payment type must be either 'CASH' or 'MPESA'" 
+    });
+  }
 
   try {
-    const allSales = await prisma.sale.findMany({
-      where: { customerId },
-      orderBy: { createdAt: "asc" },
-    });
+    // Query sales with raw SQL to handle legacy payment types gracefully
+    const allSales = await prisma.$queryRaw<Array<{
+      id: number;
+      customerId: number;
+      totalAmount: number;
+      paidAmount: number;
+      createdAt: Date;
+      paymentType: string;
+    }>>`
+      SELECT id, "customerId", "totalAmount", "paidAmount", "createdAt", "paymentType"
+      FROM "Sale" 
+      WHERE "customerId" = ${customerId}
+      ORDER BY "createdAt" ASC
+    `;
 
     const unpaidSales = allSales.filter(s => s.totalAmount > s.paidAmount);
     let remainingPayment = amount;

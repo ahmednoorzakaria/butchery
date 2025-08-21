@@ -325,10 +325,12 @@ export function Views({
     switch (method) {
       case "CASH":
         return "bg-success/10 text-success";
-      case "TRANSFER":
+      case "MPESA":
         return "bg-primary/10 text-primary";
       case "CARD":
         return "bg-warning/10 text-warning";
+      case "TRANSFER":
+        return "bg-secondary/10 text-secondary";
       default:
         return "bg-muted text-muted-foreground";
     }

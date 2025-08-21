@@ -9,12 +9,29 @@ const date_fns_1 = require("date-fns");
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const prisma = new client_1.PrismaClient();
 class PDFService {
+    constructor() {
+        // Color scheme for modern UI
+        this.colors = {
+            primary: '#2563eb', // Blue
+            secondary: '#64748b', // Slate
+            success: '#059669', // Green
+            warning: '#d97706', // Amber
+            danger: '#dc2626', // Red
+            info: '#0891b2', // Cyan
+            light: '#f8fafc', // Slate 50
+            dark: '#1e293b', // Slate 800
+            white: '#ffffff',
+            border: '#e2e8f0', // Slate 200
+            text: '#334155', // Slate 700
+            textLight: '#64748b' // Slate 500
+        };
+    }
     async generateDailyReport(date = new Date()) {
         try {
-            // Create a new PDF document
+            // Create a new PDF document with improved settings
             const doc = new pdfkit_1.default({
                 size: 'A4',
-                margin: 50,
+                margin: 40,
                 info: {
                     Title: `Daily Business Report - ${(0, date_fns_1.format)(date, 'MMM dd, yyyy')}`,
                     Author: 'Butchery Management System',
@@ -55,44 +72,105 @@ class PDFService {
         const inventoryData = await this.getInventoryData();
         const cashFlowData = await this.getCashFlowData(startDate, endDate);
         const customerData = await this.getCustomerData(startDate, endDate);
-        // Header
-        doc.fontSize(24)
-            .font('Helvetica-Bold')
-            .text('Daily Business Report', { align: 'center' });
-        doc.moveDown(0.5);
+        // Modern Header with gradient-like effect
+        this.drawModernHeader(doc, date);
+        // Executive Summary Section
+        this.drawExecutiveSummary(doc, salesData, profitLossData);
+        // Sales Performance Section
+        this.drawSalesPerformance(doc, salesData);
+        // Add page break for next section
+        doc.addPage();
+        // Financial Analysis Section
+        this.drawFinancialAnalysis(doc, profitLossData, cashFlowData);
+        // Inventory Insights Section
+        this.drawInventoryInsights(doc, inventoryData);
+        // Customer Analytics Section
+        this.drawCustomerAnalytics(doc, customerData);
+        // Footer
+        this.drawModernFooter(doc);
+    }
+    drawModernHeader(doc, date) {
+        // Background rectangle for header
+        doc.rect(0, 0, doc.page.width, 120)
+            .fill(this.colors.light);
+        // Company logo placeholder (you can add actual logo image here)
+        doc.circle(60, 60, 25)
+            .fill(this.colors.primary);
         doc.fontSize(16)
+            .font('Helvetica-Bold')
+            .fill(this.colors.white)
+            .text('BMS', 50, 50, { align: 'center' });
+        // Main title
+        doc.fontSize(28)
+            .font('Helvetica-Bold')
+            .fill(this.colors.dark)
+            .text('Daily Business Report', 100, 30);
+        // Date
+        doc.fontSize(18)
             .font('Helvetica')
-            .text((0, date_fns_1.format)(date, 'EEEE, MMMM dd, yyyy'), { align: 'center' });
-        doc.moveDown(0.5);
-        doc.fontSize(10)
+            .fill(this.colors.text)
+            .text((0, date_fns_1.format)(date, 'EEEE, MMMM dd, yyyy'), 100, 60);
+        // Generated timestamp
+        doc.fontSize(12)
             .font('Helvetica-Oblique')
-            .text(`Generated on ${(0, date_fns_1.format)(new Date(), 'MMM dd, yyyy HH:mm:ss')}`, { align: 'center' });
-        doc.moveDown(2);
-        // Sales Summary Section
-        doc.fontSize(16)
-            .font('Helvetica-Bold')
-            .text('📊 Sales Summary');
-        doc.moveDown(0.5);
-        // Sales metrics in a grid format
-        const salesMetrics = [
-            ['Total Sales', `KSH ${salesData.summary?.totalSales?.toLocaleString() || '0'}`],
-            ['Total Collected', `KSH ${salesData.summary?.totalPaid?.toLocaleString() || '0'}`],
-            ['Outstanding', `KSH ${salesData.summary?.outstandingAmount?.toLocaleString() || '0'}`],
-            ['Transactions', `${salesData.summary?.numberOfSales || '0'}`],
-            ['Net Profit', `KSH ${salesData.summary?.netProfit?.toLocaleString() || '0'}`],
-            ['Profit Margin', `${salesData.summary?.profitMargin?.toFixed(1) || '0'}%`],
-            ['Collection Rate', `${salesData.summary?.collectionRate?.toFixed(1) || '0'}%`],
-            ['Avg Order Value', `KSH ${salesData.summary?.averageOrderValue?.toLocaleString() || '0'}`]
+            .fill(this.colors.textLight)
+            .text(`Generated on ${(0, date_fns_1.format)(new Date(), 'MMM dd, yyyy HH:mm:ss')}`, 100, 85);
+        // Reset position
+        doc.y = 140;
+    }
+    drawExecutiveSummary(doc, salesData, profitLossData) {
+        // Section header
+        this.drawSectionHeader(doc, '📊 Executive Summary', 'Key performance indicators for today');
+        // KPI Cards in modern grid
+        const kpiData = [
+            {
+                title: 'Total Sales',
+                value: `KSH ${salesData.summary?.totalSales?.toLocaleString() || '0'}`,
+                icon: '💰',
+                color: this.colors.primary
+            },
+            {
+                title: 'Net Profit',
+                value: `KSH ${salesData.summary?.netProfit?.toLocaleString() || '0'}`,
+                icon: '📈',
+                color: this.colors.success
+            },
+            {
+                title: 'Transactions',
+                value: `${salesData.summary?.numberOfSales || '0'}`,
+                icon: '🛒',
+                color: this.colors.info
+            },
+            {
+                title: 'Profit Margin',
+                value: `${salesData.summary?.profitMargin?.toFixed(1) || '0'}%`,
+                icon: '🎯',
+                color: this.colors.warning
+            }
         ];
-        this.drawMetricsGrid(doc, salesMetrics, 2);
+        this.drawKPICards(doc, kpiData);
         doc.moveDown(1);
-        // Top Selling Items
+    }
+    drawSalesPerformance(doc, salesData) {
+        // Section header
+        this.drawSectionHeader(doc, '🏆 Sales Performance', 'Detailed sales analysis and top performers');
+        // Sales metrics in modern cards
+        const salesMetrics = [
+            ['Total Collected', `KSH ${salesData.summary?.totalPaid?.toLocaleString() || '0'}`, this.colors.success],
+            ['Outstanding', `KSH ${salesData.summary?.outstandingAmount?.toLocaleString() || '0'}`, this.colors.warning],
+            ['Collection Rate', `${salesData.summary?.collectionRate?.toFixed(1) || '0'}%`, this.colors.info],
+            ['Avg Order Value', `KSH ${salesData.summary?.averageOrderValue?.toLocaleString() || '0'}`, this.colors.primary]
+        ];
+        this.drawModernMetricsGrid(doc, salesMetrics);
+        doc.moveDown(1);
+        // Top Selling Items with improved table
         if (salesData.topItems && salesData.topItems.length > 0) {
             doc.fontSize(16)
                 .font('Helvetica-Bold')
-                .text('🏆 Top Selling Items');
+                .fill(this.colors.dark)
+                .text('🔥 Top Selling Items');
             doc.moveDown(0.5);
-            const topItemsData = salesData.topItems.slice(0, 10).map((item, index) => [
+            const topItemsData = salesData.topItems.slice(0, 8).map((item, index) => [
                 `${index + 1}`,
                 item.name || 'Unknown Item',
                 item.quantity?.toFixed(2) || '0',
@@ -100,63 +178,48 @@ class PDFService {
                 `KSH ${item.profit?.toLocaleString() || '0'}`
             ]);
             const topItemsHeaders = ['Rank', 'Item', 'Quantity', 'Revenue', 'Profit'];
-            this.drawDataTable(doc, [topItemsHeaders, ...topItemsData]);
+            this.drawModernDataTable(doc, [topItemsHeaders, ...topItemsData]);
             doc.moveDown(1);
         }
-        else {
-            doc.fontSize(14)
-                .font('Helvetica')
-                .fill('#6c757d')
-                .text('No sales data available for this period.', { align: 'center' });
-            doc.moveDown(1);
-        }
-        // Recent Sales
+        // Recent Sales with modern styling
         if (salesData.recentSales && salesData.recentSales.length > 0) {
             doc.fontSize(16)
                 .font('Helvetica-Bold')
-                .text('🛒 Recent Sales');
+                .fill(this.colors.dark)
+                .text('🕒 Recent Transactions');
             doc.moveDown(0.5);
-            const recentSalesData = salesData.recentSales.slice(0, 10).map(sale => [
+            const recentSalesData = salesData.recentSales.slice(0, 8).map((sale) => [
                 `#${sale.id}`,
                 sale.customer || 'Unknown Customer',
                 `KSH ${sale.amount?.toLocaleString() || '0'}`,
-                `KSH ${sale.paid?.toLocaleString() || '0'}`,
                 sale.paymentType || 'Unknown',
                 (0, date_fns_1.format)(new Date(sale.date), 'MMM dd, HH:mm')
             ]);
-            const recentSalesHeaders = ['ID', 'Customer', 'Amount', 'Paid', 'Payment', 'Date'];
-            this.drawDataTable(doc, [recentSalesHeaders, ...recentSalesData]);
+            const recentSalesHeaders = ['ID', 'Customer', 'Amount', 'Payment', 'Time'];
+            this.drawModernDataTable(doc, [recentSalesHeaders, ...recentSalesData]);
             doc.moveDown(1);
         }
-        else {
-            doc.fontSize(14)
-                .font('Helvetica')
-                .fill('#6c757d')
-                .text('No recent sales data available for this period.', { align: 'center' });
-            doc.moveDown(1);
-        }
-        // Add page break for next section
-        doc.addPage();
-        // Profit & Loss Section
-        doc.fontSize(16)
-            .font('Helvetica-Bold')
-            .text('💰 Profit & Loss Analysis');
-        doc.moveDown(0.5);
+    }
+    drawFinancialAnalysis(doc, profitLossData, cashFlowData) {
+        // Section header
+        this.drawSectionHeader(doc, '💰 Financial Analysis', 'Profit & Loss and Cash Flow insights');
+        // Profit & Loss metrics
         const profitLossMetrics = [
-            ['Total Revenue', `KSH ${profitLossData.summary?.totalRevenue?.toLocaleString() || '0'}`],
-            ['Total Cost', `KSH ${profitLossData.summary?.totalCost?.toLocaleString() || '0'}`],
-            ['Total Profit', `KSH ${profitLossData.summary?.totalProfit?.toLocaleString() || '0'}`],
-            ['Profit Margin', `${profitLossData.summary?.profitMargin?.toFixed(1) || '0'}%`]
+            ['Total Revenue', `KSH ${profitLossData.summary?.totalRevenue?.toLocaleString() || '0'}`, this.colors.success],
+            ['Total Cost', `KSH ${profitLossData.summary?.totalCost?.toLocaleString() || '0'}`, this.colors.danger],
+            ['Total Profit', `KSH ${profitLossData.summary?.totalProfit?.toLocaleString() || '0'}`, this.colors.primary],
+            ['Profit Margin', `${profitLossData.summary?.profitMargin?.toFixed(1) || '0'}%`, this.colors.warning]
         ];
-        this.drawMetricsGrid(doc, profitLossMetrics, 2);
+        this.drawModernMetricsGrid(doc, profitLossMetrics);
         doc.moveDown(1);
-        // Top Performers
+        // Top Performing Items
         if (profitLossData.topPerformers && profitLossData.topPerformers.length > 0) {
             doc.fontSize(16)
                 .font('Helvetica-Bold')
+                .fill(this.colors.dark)
                 .text('⭐ Top Performing Items');
             doc.moveDown(0.5);
-            const topPerformersData = profitLossData.topPerformers.slice(0, 10).map((item, index) => [
+            const topPerformersData = profitLossData.topPerformers.slice(0, 8).map((item, index) => [
                 `${index + 1}`,
                 item.name || 'Unknown Item',
                 item.category || 'General',
@@ -166,182 +229,254 @@ class PDFService {
                 `${item.profitMargin?.toFixed(1) || '0'}%`
             ]);
             const topPerformersHeaders = ['Rank', 'Item', 'Category', 'Quantity', 'Revenue', 'Profit', 'Margin'];
-            this.drawDataTable(doc, [topPerformersHeaders, ...topPerformersData]);
+            this.drawModernDataTable(doc, [topPerformersHeaders, ...topPerformersData]);
             doc.moveDown(1);
         }
-        else {
-            doc.fontSize(14)
-                .font('Helvetica')
-                .fill('#6c757d')
-                .text('No profit/loss data available for this period.', { align: 'center' });
-            doc.moveDown(1);
-        }
-        // Add page break for next section
-        doc.addPage();
-        // Inventory Status
-        doc.fontSize(16)
-            .font('Helvetica-Bold')
-            .text('📦 Inventory Status');
-        doc.moveDown(0.5);
-        const inventoryMetrics = [
-            ['Total Items', `${inventoryData.summary?.totalItems || '0'}`],
-            ['Total Value', `KSH ${inventoryData.summary?.totalValue?.toLocaleString() || '0'}`],
-            ['Potential Profit', `KSH ${inventoryData.summary?.potentialProfit?.toLocaleString() || '0'}`],
-            ['Categories', `${inventoryData.summary?.categoryCount || '0'}`]
-        ];
-        this.drawMetricsGrid(doc, inventoryMetrics, 2);
-        doc.moveDown(1);
-        // Cash Flow
-        doc.fontSize(16)
-            .font('Helvetica-Bold')
-            .text('💳 Cash Flow Summary');
-        doc.moveDown(0.5);
+        // Cash Flow metrics
         const cashFlowMetrics = [
-            ['Total Revenue', `KSH ${cashFlowData.summary?.totalRevenue?.toLocaleString() || '0'}`],
-            ['Total Collected', `KSH ${cashFlowData.summary?.totalCollected?.toLocaleString() || '0'}`],
-            ['Total Outstanding', `KSH ${cashFlowData.summary?.totalOutstanding?.toLocaleString() || '0'}`],
-            ['Collection Rate', `${cashFlowData.summary?.collectionRate?.toFixed(1) || '0'}%`]
+            ['Cash Inflow', `KSH ${cashFlowData.summary?.totalInflow?.toLocaleString() || '0'}`, this.colors.success],
+            ['Cash Outflow', `KSH ${cashFlowData.summary?.totalOutflow?.toLocaleString() || '0'}`, this.colors.danger],
+            ['Net Cash Flow', `KSH ${cashFlowData.summary?.netCashFlow?.toLocaleString() || '0'}`, this.colors.primary],
+            ['Collection Rate', `${cashFlowData.summary?.collectionRate?.toFixed(1) || '0'}%`, this.colors.info]
         ];
-        this.drawMetricsGrid(doc, cashFlowMetrics, 2);
+        this.drawModernMetricsGrid(doc, cashFlowMetrics);
         doc.moveDown(1);
-        // Customer Analysis
-        doc.fontSize(16)
-            .font('Helvetica-Bold')
-            .text('👥 Customer Analysis');
-        doc.moveDown(0.5);
-        const customerMetrics = [
-            ['Total Customers', `${customerData.totalCustomers || '0'}`],
-            ['Active Customers', `${customerData.activeCustomers || '0'}`],
-            ['Total Spent', `KSH ${customerData.customers?.reduce((sum, c) => sum + c.totalSpent, 0).toLocaleString() || '0'}`],
-            ['Customers in Period', `${customerData.customers?.length || '0'}`]
+    }
+    drawInventoryInsights(doc, inventoryData) {
+        // Section header
+        this.drawSectionHeader(doc, '📦 Inventory Insights', 'Stock levels and inventory performance');
+        // Inventory metrics
+        const inventoryMetrics = [
+            ['Total Items', `${inventoryData.summary?.totalItems || '0'}`, this.colors.info],
+            ['Low Stock Items', `${inventoryData.summary?.lowStockItems || '0'}`, this.colors.warning],
+            ['Out of Stock', `${inventoryData.summary?.outOfStock || '0'}`, this.colors.danger],
+            ['Total Value', `KSH ${inventoryData.summary?.totalValue?.toLocaleString() || '0'}`, this.colors.primary]
         ];
-        this.drawMetricsGrid(doc, customerMetrics, 2);
+        this.drawModernMetricsGrid(doc, inventoryMetrics);
+        doc.moveDown(1);
+        // Low Stock Alerts
+        if (inventoryData.lowStockAlerts && inventoryData.lowStockAlerts.length > 0) {
+            doc.fontSize(16)
+                .font('Helvetica-Bold')
+                .fill(this.colors.warning)
+                .text('⚠️ Low Stock Alerts');
+            doc.moveDown(0.5);
+            const lowStockData = inventoryData.lowStockAlerts.slice(0, 6).map((item) => [
+                item.name || 'Unknown Item',
+                item.category || 'General',
+                item.quantity?.toString() || '0',
+                item.lowStockLimit?.toString() || '0',
+                item.unit || 'units'
+            ]);
+            const lowStockHeaders = ['Item', 'Category', 'Current Stock', 'Min Required', 'Unit'];
+            this.drawModernDataTable(doc, [lowStockHeaders, ...lowStockData]);
+            doc.moveDown(1);
+        }
+    }
+    drawCustomerAnalytics(doc, customerData) {
+        // Section header
+        this.drawSectionHeader(doc, '👥 Customer Analytics', 'Customer behavior and debt analysis');
+        // Customer metrics
+        const customerMetrics = [
+            ['Total Customers', `${customerData.summary?.totalCustomers || '0'}`, this.colors.info],
+            ['Active Customers', `${customerData.summary?.activeCustomers || '0'}`, this.colors.success],
+            ['New Customers', `${customerData.summary?.newCustomers || '0'}`, this.colors.primary],
+            ['Avg Order Value', `KSH ${customerData.summary?.averageOrderValue?.toLocaleString() || '0'}`, this.colors.warning]
+        ];
+        this.drawModernMetricsGrid(doc, customerMetrics);
         doc.moveDown(1);
         // Debt Summary
-        doc.fontSize(16)
-            .font('Helvetica-Bold')
-            .text('⚠️ Debt Summary');
-        doc.moveDown(0.5);
-        const debtSummary = await this.getDebtSummaryData();
-        if (debtSummary) {
+        if (customerData.debtSummary) {
+            doc.fontSize(16)
+                .font('Helvetica-Bold')
+                .fill(this.colors.danger)
+                .text('💳 Outstanding Debts');
+            doc.moveDown(0.5);
             const debtMetrics = [
-                ['Total Outstanding', `KSH ${debtSummary.totalOutstanding.toLocaleString()}`],
-                ['Customers with Debt', `${debtSummary.customerCount}`],
-                ['Average Debt', `KSH ${debtSummary.averageDebt.toFixed(0)}`]
+                ['Total Outstanding', `KSH ${customerData.debtSummary.totalOutstanding?.toLocaleString() || '0'}`, this.colors.danger],
+                ['Customers in Debt', `${customerData.debtSummary.customerCount || '0'}`, this.colors.warning],
+                ['Average Debt', `KSH ${customerData.debtSummary.averageDebt?.toFixed(0) || '0'}`, this.colors.secondary]
             ];
-            this.drawMetricsGrid(doc, debtMetrics, 2);
+            this.drawModernMetricsGrid(doc, debtMetrics);
             doc.moveDown(1);
-            // Top debtors table
-            if (debtSummary.topDebtors.length > 0) {
+            // Top Debtors
+            if (customerData.debtSummary.topDebtors && customerData.debtSummary.topDebtors.length > 0) {
                 doc.fontSize(14)
                     .font('Helvetica-Bold')
-                    .text('Top Debtors:');
+                    .fill(this.colors.dark)
+                    .text('Top Debtors');
                 doc.moveDown(0.5);
-                const debtorsData = debtSummary.topDebtors.slice(0, 10).map((debtor, index) => [
-                    `${index + 1}`,
-                    debtor.name,
-                    `KSH ${Math.abs(debtor.balance).toLocaleString()}`
+                const debtorsData = customerData.debtSummary.topDebtors.slice(0, 5).map((debtor) => [
+                    debtor.name || 'Unknown Customer',
+                    `KSH ${Math.abs(debtor.balance || 0).toLocaleString()}`,
+                    debtor.balance < 0 ? 'Outstanding' : 'Credit'
                 ]);
-                const debtorsHeaders = ['Rank', 'Customer Name', 'Outstanding Balance'];
-                this.drawDataTable(doc, [debtorsHeaders, ...debtorsData]);
+                const debtorsHeaders = ['Customer', 'Amount', 'Status'];
+                this.drawModernDataTable(doc, [debtorsHeaders, ...debtorsData]);
+                doc.moveDown(1);
             }
         }
-        // Footer
-        doc.moveDown(2);
+    }
+    drawModernFooter(doc) {
+        // Footer background
+        doc.rect(0, doc.page.height - 80, doc.page.width, 80)
+            .fill(this.colors.light);
+        // Footer content
         doc.fontSize(10)
             .font('Helvetica-Oblique')
+            .fill(this.colors.textLight)
             .text('This report was automatically generated by the Butchery Management System.', { align: 'center' });
         doc.moveDown(0.5);
         doc.text('For questions or support, please contact your system administrator.', { align: 'center' });
+        // Page number
+        doc.fontSize(10)
+            .font('Helvetica-Bold')
+            .fill(this.colors.primary)
+            .text(`Page ${doc.bufferedPageRange().count}`, { align: 'center' });
     }
-    // Draw metrics in a grid format (2 columns)
-    drawMetricsGrid(doc, data, columns) {
-        const pageWidth = doc.page.width - 100; // 50px margin on each side
-        const colWidth = pageWidth / columns;
-        const rowHeight = 30;
+    drawSectionHeader(doc, title, subtitle) {
+        // Section background
+        doc.rect(0, doc.y - 10, doc.page.width - 80, 50)
+            .fill(this.colors.primary + '10');
+        // Section title
+        doc.fontSize(18)
+            .font('Helvetica-Bold')
+            .fill(this.colors.primary)
+            .text(title, 0, doc.y);
+        // Section subtitle
+        doc.fontSize(12)
+            .font('Helvetica')
+            .fill(this.colors.textLight)
+            .text(subtitle, 0, doc.y + 25);
+        doc.y += 60;
+    }
+    drawKPICards(doc, kpiData) {
+        const pageWidth = doc.page.width - 80;
+        const cardWidth = pageWidth / 2;
+        const cardHeight = 60;
+        const startX = doc.x;
+        const startY = doc.y;
+        kpiData.forEach((kpi, index) => {
+            const row = Math.floor(index / 2);
+            const col = index % 2;
+            const x = startX + (col * cardWidth);
+            const y = startY + (row * (cardHeight + 10));
+            // Card background with shadow effect
+            doc.rect(x + 2, y + 2, cardWidth - 4, cardHeight - 4)
+                .fill(this.colors.white);
+            doc.rect(x, y, cardWidth, cardHeight)
+                .fill(this.colors.white)
+                .stroke(this.colors.border);
+            // Icon
+            doc.fontSize(20)
+                .text(kpi.icon, x + 15, y + 10);
+            // Title
+            doc.fontSize(10)
+                .font('Helvetica-Bold')
+                .fill(this.colors.text)
+                .text(kpi.title, x + 45, y + 10, {
+                width: cardWidth - 60,
+                align: 'left'
+            });
+            // Value
+            doc.fontSize(16)
+                .font('Helvetica-Bold')
+                .fill(kpi.color)
+                .text(kpi.value, x + 15, y + 35, {
+                width: cardWidth - 30,
+                align: 'left'
+            });
+        });
+        // Update document position
+        const rows = Math.ceil(kpiData.length / 2);
+        doc.y = startY + (rows * (cardHeight + 10)) + 20;
+    }
+    drawModernMetricsGrid(doc, data) {
+        const pageWidth = doc.page.width - 80;
+        const colWidth = pageWidth / 2;
+        const rowHeight = 35;
         const startX = doc.x;
         const startY = doc.y;
         data.forEach((row, rowIndex) => {
             const y = startY + (rowIndex * rowHeight);
             // Draw background rectangle for each metric
             doc.rect(startX, y, colWidth, rowHeight)
-                .fill('#f8f9fa');
+                .fill(this.colors.light);
             // Draw border
             doc.rect(startX, y, colWidth, rowHeight)
-                .stroke();
+                .stroke(this.colors.border);
             // Add label
             doc.fontSize(10)
                 .font('Helvetica-Bold')
-                .fill('#495057')
+                .fill(this.colors.text)
                 .text(row[0], startX + 10, y + 5, {
                 width: colWidth - 20,
                 align: 'left'
             });
-            // Add value
+            // Add value with color
             doc.fontSize(12)
                 .font('Helvetica-Bold')
-                .fill('#007bff')
-                .text(row[1], startX + 10, y + 15, {
+                .fill(row[2] || this.colors.primary)
+                .text(row[1], startX + 10, y + 18, {
                 width: colWidth - 20,
                 align: 'left'
             });
         });
         // Update document position
-        doc.y = startY + (data.length * rowHeight) + 10;
+        doc.y = startY + (data.length * rowHeight) + 15;
     }
-    // Draw data tables with proper formatting
-    drawDataTable(doc, data) {
+    drawModernDataTable(doc, data) {
         if (data.length === 0)
             return;
-        const pageWidth = doc.page.width - 100; // 50px margin on each side
+        const pageWidth = doc.page.width - 80;
         const colCount = data[0].length;
         const colWidth = pageWidth / colCount;
-        const rowHeight = 25;
+        const rowHeight = 28;
         const startX = doc.x;
         const startY = doc.y;
-        // Draw header row
+        // Draw header row with modern styling
         const headerY = startY;
         doc.rect(startX, headerY, pageWidth, rowHeight)
-            .fill('#e9ecef');
+            .fill(this.colors.primary);
         doc.rect(startX, headerY, pageWidth, rowHeight)
-            .stroke();
+            .stroke(this.colors.primary);
         // Add header text
         data[0].forEach((header, colIndex) => {
             const x = startX + (colIndex * colWidth);
             doc.fontSize(10)
                 .font('Helvetica-Bold')
-                .fill('#495057')
-                .text(header, x + 5, headerY + 5, {
-                width: colWidth - 10,
+                .fill(this.colors.white)
+                .text(header, x + 8, headerY + 7, {
+                width: colWidth - 16,
                 align: 'left'
             });
         });
-        // Draw data rows
+        // Draw data rows with modern styling
         for (let rowIndex = 1; rowIndex < data.length; rowIndex++) {
             const row = data[rowIndex];
             const y = startY + (rowIndex * rowHeight);
             // Alternate row colors
             if (rowIndex % 2 === 0) {
                 doc.rect(startX, y, pageWidth, rowHeight)
-                    .fill('#f8f9fa');
+                    .fill(this.colors.light);
             }
             // Draw row border
             doc.rect(startX, y, pageWidth, rowHeight)
-                .stroke();
+                .stroke(this.colors.border);
             // Add row data
             row.forEach((cell, colIndex) => {
                 const x = startX + (colIndex * colWidth);
                 doc.fontSize(9)
                     .font('Helvetica')
-                    .fill('#212529')
-                    .text(cell, x + 5, y + 5, {
-                    width: colWidth - 10,
+                    .fill(this.colors.text)
+                    .text(cell, x + 8, y + 7, {
+                    width: colWidth - 16,
                     align: 'left'
                 });
             });
         }
         // Update document position
-        doc.y = startY + (data.length * rowHeight) + 10;
+        doc.y = startY + (data.length * rowHeight) + 15;
     }
     async getDebtSummaryData() {
         try {
@@ -427,8 +562,7 @@ class PDFService {
                 name,
                 quantity: data.quantity,
                 revenue: data.revenue,
-                cost: data.cost,
-                profit: data.profit,
+                profit: data.profit
             }))
                 .sort((a, b) => b.revenue - a.revenue)
                 .slice(0, 10);
@@ -438,16 +572,11 @@ class PDFService {
                 .slice(0, 10)
                 .map(sale => ({
                 id: sale.id,
-                customer: sale.customer.name,
+                customer: sale.customer?.name || 'Unknown Customer',
                 amount: sale.totalAmount,
                 paid: sale.paidAmount,
                 paymentType: sale.paymentType,
-                date: sale.createdAt,
-                items: sale.items.map(item => ({
-                    quantity: item.quantity,
-                    name: item.item.name,
-                    price: item.price,
-                })),
+                date: sale.createdAt
             }));
             return {
                 summary: {
@@ -458,10 +587,10 @@ class PDFService {
                     netProfit,
                     profitMargin,
                     collectionRate,
-                    averageOrderValue,
+                    averageOrderValue
                 },
                 topItems,
-                recentSales,
+                recentSales
             };
         }
         catch (error) {
@@ -488,75 +617,89 @@ class PDFService {
             });
             let totalRevenue = 0;
             let totalCost = 0;
-            const itemProfitability = {};
+            const itemPerformance = {};
             sales.forEach(sale => {
                 sale.items.forEach(item => {
+                    const itemCost = item.item.basePrice || item.price * 0.7;
                     const revenue = item.quantity * item.price;
-                    const cost = item.quantity * (item.item.basePrice || item.price * 0.7);
+                    const cost = item.quantity * itemCost;
                     const profit = revenue - cost;
                     totalRevenue += revenue;
                     totalCost += cost;
-                    if (!itemProfitability[item.item.name]) {
-                        itemProfitability[item.item.name] = {
+                    if (!itemPerformance[item.item.name]) {
+                        itemPerformance[item.item.name] = {
                             name: item.item.name,
                             category: item.item.category || 'General',
                             totalQuantity: 0,
                             totalRevenue: 0,
-                            totalCost: 0,
                             totalProfit: 0,
+                            totalCost: 0
                         };
                     }
-                    itemProfitability[item.item.name].totalQuantity += item.quantity;
-                    itemProfitability[item.item.name].totalRevenue += revenue;
-                    itemProfitability[item.item.name].totalCost += cost;
-                    itemProfitability[item.item.name].totalProfit += profit;
+                    itemPerformance[item.item.name].totalQuantity += item.quantity;
+                    itemPerformance[item.item.name].totalRevenue += revenue;
+                    itemPerformance[item.item.name].totalProfit += profit;
+                    itemPerformance[item.item.name].totalCost += cost;
                 });
-            });
-            Object.values(itemProfitability).forEach((item) => {
-                item.profitMargin = item.totalRevenue > 0 ? (item.totalProfit / item.totalRevenue) * 100 : 0;
             });
             const totalProfit = totalRevenue - totalCost;
             const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+            const topPerformers = Object.values(itemPerformance)
+                .map(item => ({
+                ...item,
+                profitMargin: item.totalRevenue > 0 ? (item.totalProfit / item.totalRevenue) * 100 : 0
+            }))
+                .sort((a, b) => b.totalProfit - a.totalProfit)
+                .slice(0, 10);
             return {
                 summary: {
                     totalRevenue,
                     totalCost,
                     totalProfit,
-                    profitMargin,
+                    profitMargin
                 },
-                topPerformers: Object.values(itemProfitability)
-                    .sort((a, b) => b.totalProfit - a.totalProfit)
-                    .slice(0, 15),
+                topPerformers
             };
         }
         catch (error) {
-            console.error('Error fetching profit loss data:', error);
+            console.error('Error fetching profit/loss data:', error);
             return { summary: {}, topPerformers: [] };
         }
     }
     async getInventoryData() {
         try {
             const inventory = await prisma.inventoryItem.findMany();
-            const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
+            const totalItems = inventory.length;
             const totalValue = inventory.reduce((sum, item) => {
-                return sum + (item.quantity * (item.sellPrice || 0));
+                const itemValue = (item.sellPrice || item.basePrice || 0) * item.quantity;
+                return sum + itemValue;
             }, 0);
-            const potentialProfit = inventory.reduce((sum, item) => {
-                return sum + (item.quantity * ((item.sellPrice || 0) - (item.basePrice || 0)));
-            }, 0);
-            const categoryCount = new Set(inventory.map(item => item.category)).size;
+            const lowStockItems = inventory.filter(item => item.quantity <= (item.lowStockLimit || 10)).length;
+            const outOfStock = inventory.filter(item => item.quantity === 0).length;
+            const lowStockAlerts = inventory
+                .filter(item => item.quantity <= (item.lowStockLimit || 10))
+                .map(item => ({
+                name: item.name,
+                category: item.category,
+                quantity: item.quantity,
+                lowStockLimit: item.lowStockLimit || 10,
+                unit: item.unit
+            }))
+                .sort((a, b) => a.quantity - b.quantity)
+                .slice(0, 10);
             return {
                 summary: {
                     totalItems,
                     totalValue,
-                    potentialProfit,
-                    categoryCount,
+                    lowStockItems,
+                    outOfStock
                 },
+                lowStockAlerts
             };
         }
         catch (error) {
             console.error('Error fetching inventory data:', error);
-            return { summary: {} };
+            return { summary: {}, lowStockAlerts: [] };
         }
     }
     async getCashFlowData(startDate, endDate) {
@@ -569,17 +712,18 @@ class PDFService {
                     },
                 },
             });
-            const totalCollected = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
-            const totalOutstanding = sales.reduce((sum, sale) => sum + (sale.totalAmount - sale.paidAmount), 0);
-            const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
-            const collectionRate = totalRevenue > 0 ? (totalCollected / totalRevenue) * 100 : 0;
+            const totalInflow = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
+            const totalOutflow = 0; // You can add expense data here if available
+            const netCashFlow = totalInflow - totalOutflow;
+            const collectionRate = sales.reduce((sum, sale) => sum + sale.paidAmount, 0) /
+                sales.reduce((sum, sale) => sum + sale.totalAmount, 0) * 100 || 0;
             return {
                 summary: {
-                    totalRevenue,
-                    totalCollected,
-                    totalOutstanding,
-                    collectionRate,
-                },
+                    totalInflow,
+                    totalOutflow,
+                    netCashFlow,
+                    collectionRate
+                }
             };
         }
         catch (error) {
@@ -601,34 +745,26 @@ class PDFService {
                     },
                 },
             });
-            const topCustomers = customers
-                .map(customer => {
-                const total = customer.sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
-                const orders = customer.sales.length;
-                return {
-                    name: customer.name,
-                    orders,
-                    total,
-                    average: orders > 0 ? total / orders : 0,
-                };
-            })
-                .filter(customer => customer.total > 0)
-                .sort((a, b) => b.total - a.total)
-                .slice(0, 15);
+            const totalCustomers = customers.length;
+            const activeCustomers = customers.filter(c => c.sales.length > 0).length;
+            const newCustomers = customers.filter(c => new Date(c.createdAt) >= new Date(startDate)).length;
+            const totalSales = customers.reduce((sum, c) => sum + c.sales.reduce((saleSum, sale) => saleSum + sale.totalAmount, 0), 0);
+            const averageOrderValue = totalSales / Math.max(activeCustomers, 1);
+            // Get debt summary
+            const debtSummary = await this.getDebtSummaryData();
             return {
-                customers: topCustomers.map(customer => ({
-                    name: customer.name,
-                    numberOfOrders: customer.orders,
-                    totalSpent: customer.total,
-                    averageOrderValue: customer.average,
-                })),
-                totalCustomers: customers.length,
-                activeCustomers: customers.filter(c => c.sales.length > 0).length,
+                summary: {
+                    totalCustomers,
+                    activeCustomers,
+                    newCustomers,
+                    averageOrderValue
+                },
+                debtSummary
             };
         }
         catch (error) {
             console.error('Error fetching customer data:', error);
-            return { customers: [], totalCustomers: 0, activeCustomers: 0 };
+            return { summary: {}, debtSummary: null };
         }
     }
     async generateFallbackPDF(date) {
