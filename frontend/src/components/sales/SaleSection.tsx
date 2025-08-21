@@ -231,7 +231,8 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
         });
         return;
       }
-      validQuantity = Math.round(itemQuantity * 100) / 100; // Round to 2 decimal places
+      // Keep full decimal precision for kg and litres
+      // validQuantity = Math.round(itemQuantity * 100) / 100;
     }
 
     // Check if item already exists in sale
@@ -291,7 +292,9 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
   // Handle item selection
   const handleItemSelect = (item: InventoryItem) => {
     setSelectedItem(item);
-    setItemPrice(item.sellPrice || 0);
+    // Set price to recommended sell price if available, otherwise use limit price as fallback, fallback to 0
+    const defaultPrice = item.sellPrice || item.limitPrice || 0;
+    setItemPrice(defaultPrice);
     setItemQuantity(1);
     setInputMode('quantity');
     setItemTotalAmount(0);
@@ -628,7 +631,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                       id="quantity"
                       type="number"
                       min="0.01"
-                      step={selectedItem?.unit === 'kg' || selectedItem?.unit === 'litres' ? "0.01" : "1"}
+                      step={selectedItem?.unit === 'kg' || selectedItem?.unit === 'litres' ? "0.000001" : "1"}
                       value={itemQuantity}
                       onChange={(e) => {
                         const value = parseFloat(e.target.value);
@@ -667,7 +670,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                       id="totalAmount"
                       type="number"
                       min="0.01"
-                      step="0.01"
+                      step="0.000001"
                       value={itemTotalAmount}
                       onChange={(e) => {
                         const value = parseFloat(e.target.value);
@@ -681,7 +684,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     />
                     {selectedItem && itemPrice > 0 && itemTotalAmount > 0 && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Quantity: {(itemTotalAmount / itemPrice).toFixed(3)} {selectedItem.unit}
+                        Quantity: {(itemTotalAmount / itemPrice).toFixed(6)} {selectedItem.unit}
                       </p>
                     )}
                   </div>
@@ -693,7 +696,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     id="price"
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="0.000001"
                     value={itemPrice}
                     onChange={(e) => setItemPrice(parseFloat(e.target.value) || 0)}
                     disabled={!selectedItem}
@@ -719,7 +722,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                       <>
                         <br />
                         <span className="text-muted-foreground">
-                          Calculated Quantity: {(itemTotalAmount / itemPrice).toFixed(3)} {selectedItem.unit}
+                          Calculated Quantity: {(itemTotalAmount / itemPrice).toFixed(6)} {selectedItem.unit}
                         </span>
                       </>
                     )}
@@ -727,7 +730,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                       <>
                         <br />
                         <span className="text-muted-foreground">
-                          Total Amount: KSH {(itemQuantity * itemPrice).toFixed(2)}
+                          Total Amount: KSH {(itemQuantity * itemPrice).toFixed(6)}
                         </span>
                       </>
                     )}
@@ -774,7 +777,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                             <Input
                               type="number"
                               min="0.01"
-                              step="0.01"
+                              step="0.000001"
                               value={item.quantity}
                               onChange={(e) => updateItemQuantity(index, parseFloat(e.target.value) || 0)}
                               className="w-20"
@@ -786,10 +789,10 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                             <Input
                               type="number"
                               min="0"
-                              step="0.01"
+                              step="0.000001"
                               value={item.price}
                               onChange={(e) => updateItemPrice(index, parseFloat(e.target.value) || 0)}
-                              className="w-24"
+                              className="w-20"
                             />
                           </div>
                           
@@ -830,7 +833,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     id="discount"
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="0.000001"
                     value={formData.discount}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 
@@ -864,7 +867,7 @@ export function SaleSection({ isOpen, onOpenChange }: SaleSectionProps) {
                     id="paidAmount"
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="0.000001"
                     value={formData.paidAmount}
                     onChange={(e) => setFormData(prev => ({ 
                       ...prev, 

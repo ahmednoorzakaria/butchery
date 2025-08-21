@@ -238,7 +238,8 @@ export function CreateSale({ isOpen, onOpenChange }: CreateSaleProps) {
         });
         return;
       }
-      validQuantity = Math.round(validQuantity * 100) / 100;
+      // Keep full decimal precision for kg and litres
+      // validQuantity = Math.round(validQuantity * 100) / 100;
     }
 
     const existingItemIndex = formData.items.findIndex(item => item.itemId === selectedItem.id);
@@ -294,8 +295,8 @@ export function CreateSale({ isOpen, onOpenChange }: CreateSaleProps) {
   // Handle item selection
   const handleItemSelect = (item: InventoryItem) => {
     setSelectedItem(item);
-    // Set price to limit price if available, otherwise use sell price, fallback to 0
-    const defaultPrice = item.limitPrice || item.sellPrice || 0;
+    // Set price to recommended sell price if available, otherwise use limit price as fallback, fallback to 0
+    const defaultPrice = item.sellPrice || item.limitPrice || 0;
     setItemPrice(defaultPrice);
     setItemQuantity(1);
     setInputMode('quantity');
@@ -600,7 +601,7 @@ export function CreateSale({ isOpen, onOpenChange }: CreateSaleProps) {
                         id="quantity"
                         type="number"
                         min="0.01"
-                        step={selectedItem.unit === 'pcs' ? 1 : 0.01}
+                        step={selectedItem.unit === 'pcs' ? 1 : 0.000001}
                         value={itemQuantity}
                         onChange={(e) => setItemQuantity(parseFloat(e.target.value) || 0)}
                         className="h-10"
@@ -616,7 +617,7 @@ export function CreateSale({ isOpen, onOpenChange }: CreateSaleProps) {
                         id="totalAmount"
                         type="number"
                         min="0.01"
-                        step="0.01"
+                        step="0.000001"
                         value={itemTotalAmount}
                         onChange={(e) => setItemTotalAmount(parseFloat(e.target.value) || 0)}
                         className="h-10"
@@ -624,7 +625,7 @@ export function CreateSale({ isOpen, onOpenChange }: CreateSaleProps) {
                       />
                       {itemTotalAmount > 0 && itemPrice > 0 && (
                         <div className="text-xs text-muted-foreground mt-1">
-                          Calculated Quantity: {(itemTotalAmount / itemPrice).toFixed(3)} {selectedItem.unit}
+                          Calculated Quantity: {(itemTotalAmount / itemPrice).toFixed(6)} {selectedItem.unit}
                         </div>
                       )}
                       {itemTotalAmount > 0 && itemPrice <= 0 && (
@@ -641,7 +642,7 @@ export function CreateSale({ isOpen, onOpenChange }: CreateSaleProps) {
                       id="price"
                       type="number"
                       min={selectedItem.limitPrice || 0}
-                      step="0.01"
+                      step="0.000001"
                       value={itemPrice}
                       onChange={(e) => setItemPrice(parseFloat(e.target.value) || 0)}
                       className={cn(
@@ -758,7 +759,7 @@ export function CreateSale({ isOpen, onOpenChange }: CreateSaleProps) {
                 id="discount"
                 type="number"
                 min="0"
-                step="0.01"
+                step="0.000001"
                 value={formData.discount}
                 onChange={(e) => setFormData(prev => ({ 
                   ...prev, 
@@ -774,7 +775,7 @@ export function CreateSale({ isOpen, onOpenChange }: CreateSaleProps) {
                 id="paidAmount"
                 type="number"
                 min="0"
-                step="0.01"
+                step="0.000001"
                 value={formData.paidAmount}
                 onChange={(e) => setFormData(prev => ({ 
                   ...prev, 
