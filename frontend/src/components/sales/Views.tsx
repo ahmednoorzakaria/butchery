@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search,
@@ -106,14 +106,13 @@ export function Views({
     refetch,
     isFetching 
   } = useQuery({
-    queryKey: ["sales-optimized", searchTerm, currentMonth, filterType, currentPage],
+    queryKey: ["sales-optimized", searchTerm, currentMonth, filterType],
     queryFn: async () => {
       try {
         // Build query parameters for optimized API
         const params: any = {
           filterType,
-          page: currentPage,
-          limit: 1000, // Increased limit for better performance
+          limit: 'all',
         };
 
         // Add search parameter if provided
@@ -154,6 +153,15 @@ export function Views({
     setSearchInput(e.target.value);
   };
 
+  // Debounce search to auto-apply after typing
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      onSearchChange(searchInput);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchInput, onSearchChange]);
+
   // Handle search input key press
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -170,15 +178,15 @@ export function Views({
   // Component state management
 
   // Filter sales based on user selection only (search is handled by backend)
-  const filteredSales = sales.filter((sale: Sale) => {
+  const filteredSales = useMemo(() => sales.filter((sale: Sale) => {
     const matchesUser = selectedUser === "all" || sale.userId.toString() === selectedUser;
     return matchesUser;
-  });
+  }), [sales, selectedUser]);
 
   // Get unique users for filtering
-  const uniqueUsers: User[] = sales ? Array.from(
+  const uniqueUsers: User[] = useMemo(() => sales ? Array.from(
     new Map(sales.map((sale: Sale) => [sale.userId, sale.user])).values()
-  ).filter((user): user is User => user !== null && user !== undefined) : [];
+  ).filter((user): user is User => user !== null && user !== undefined) : [], [sales]);
 
   // Calculate current month's total
   const currentMonthTotal = sales ? sales
@@ -421,6 +429,7 @@ export function Views({
                   {currentMonthTransactions} transactions • KSH {currentMonthTotal.toLocaleString()} total
                   {searchTerm && " (Filtered results)"}
                 </p>
+                <p className="text-xs text-muted-foreground mt-1">Results: {filteredSales.length.toLocaleString()}</p>
               </div>
               <div className="text-right">
                 <p className="text-sm text-muted-foreground">Average per sale</p>
