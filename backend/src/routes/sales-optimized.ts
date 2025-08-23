@@ -28,7 +28,7 @@ router.get("/sales", authenticateToken, async (req, res) => {
     end, 
     search, 
     page = 1, 
-    limit = 1000,
+    limit = "all",
     filterType = "custom" // custom, today, week, month, year
   } = req.query as { 
     start?: string; 
@@ -40,8 +40,8 @@ router.get("/sales", authenticateToken, async (req, res) => {
   };
   
   const pageNum = parseInt(page as string) || 1;
-  const limitNum = Math.min(parseInt(limit as string) || 1000, 1000); // Increased limit
-  const skip = (pageNum - 1) * limitNum;
+  const limitNum = limit === "all" ? undefined : Math.min(parseInt(limit as string) || 1000, 1000);
+  const skip = limitNum ? (pageNum - 1) * limitNum : undefined;
   
   try {
     // Handle different filter types
@@ -67,13 +67,11 @@ router.get("/sales", authenticateToken, async (req, res) => {
         endDate = endOfYear(now);
         break;
       default:
-        // Custom date range
         if (start && isValid(parseISO(start))) {
           startDate = parseISO(start);
         } else {
           startDate = subDays(now, 7);
         }
-        
         if (end && isValid(parseISO(end))) {
           endDate = endOfDay(parseISO(end));
         } else {
@@ -81,84 +79,40 @@ router.get("/sales", authenticateToken, async (req, res) => {
         }
     }
 
-    // Build where clause for search functionality
-    const whereClause: any = {
-      createdAt: { gte: startDate, lte: endDate },
-    };
+    const whereClause: any = { createdAt: { gte: startDate, lte: endDate } };
 
-    // Enhanced search functionality
     if (search && search.trim()) {
       const searchTerm = search.trim();
-      
-      // Check if search is a number (sale ID)
       const saleId = parseInt(searchTerm);
       if (!isNaN(saleId)) {
-        // If it's a number, search for exact sale ID first, then customer info
         whereClause.OR = [
-          { id: saleId }, // Exact sale ID match
-          { 
-            customer: { 
-              OR: [
-                { name: { contains: searchTerm, mode: 'insensitive' } },
-                { phone: { contains: searchTerm, mode: 'insensitive' } }
-              ]
-            } 
-          }
+          { id: saleId },
+          { customer: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
+          { customer: { is: { phone: { contains: searchTerm, mode: 'insensitive' } } } },
         ];
       } else {
-        // If it's text, search by customer name or phone only
         whereClause.OR = [
-          { customer: { name: { contains: searchTerm, mode: 'insensitive' } } },
-          { customer: { phone: { contains: searchTerm, mode: 'insensitive' } } },
+          { customer: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
+          { customer: { is: { phone: { contains: searchTerm, mode: 'insensitive' } } } },
         ];
       }
     }
 
-    // Get total count for pagination
-    const totalCount = await prisma.sale.count({
-      where: whereClause,
-    });
-
-    // Get sales with pagination
     const sales = await prisma.sale.findMany({
       where: whereClause,
       include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-          }
-        },
-        items: { 
-          include: { 
-            item: {
-              select: {
-                id: true,
-                name: true,
-                category: true,
-                unit: true,
-              }
-            } 
-          } 
-        },
-        user: { 
-          select: { 
-            id: true, 
-            name: true 
-          } 
-        },
+        customer: { select: { id: true, name: true, phone: true } },
+        items: { include: { item: { select: { id: true, name: true, category: true, unit: true } } } },
+        user: { select: { id: true, name: true } },
       },
       orderBy: { createdAt: "desc" },
       skip,
       take: limitNum,
     });
 
-    const totalPages = Math.ceil(totalCount / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
+    const totalCount = await prisma.sale.count({ where: whereClause });
+    const totalPages = limitNum ? Math.ceil(totalCount / limitNum) : 1;
 
-    // Calculate summary statistics
     const summary = {
       totalSales: sales.length,
       totalAmount: sales.reduce((sum, sale) => sum + sale.totalAmount, 0),
@@ -170,14 +124,14 @@ router.get("/sales", authenticateToken, async (req, res) => {
 
     res.json({
       sales,
-      pagination: {
+      pagination: limitNum ? {
         currentPage: pageNum,
         totalPages,
         totalCount,
-        hasNextPage,
-        hasPrevPage,
+        hasNextPage: pageNum < totalPages,
+        hasPrevPage: pageNum > 1,
         limit: limitNum,
-      },
+      } : null,
       summary,
       filterInfo: {
         startDate: startDate.toISOString(),
