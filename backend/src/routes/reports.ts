@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
 import { authenticateToken } from "../middleware/authMiddleware";
 import {
   startOfDay,
@@ -13,8 +12,8 @@ import {
   subDays,
   format
 } from "date-fns";
+import prisma from "../lib/prisma";
 
-const prisma = new PrismaClient();
 const router = Router();
 
 // ✅ 1. GET /reports/outstanding-balances
@@ -67,16 +66,24 @@ router.get("/top-products", authenticateToken, async (req, res) => {
       },
       take: 10, // return top 10
     });
-    const withNames = await Promise.all(items.map(async (item) => {
-      const itemInfo = await prisma.inventoryItem.findUnique({
-        where: { id: item.itemId },
-      });
-      return {
-        itemId: item.itemId,
-        name: itemInfo?.name,
-        quantitySold: item._sum.quantity,
-      };
-    }));
+    // OPTIMIZED: Single raw SQL query with JOINs to eliminate N+1 queries
+    const withNames = await prisma.$queryRaw<Array<{
+      itemId: number;
+      name: string;
+      quantitySold: number;
+    }>>`
+      SELECT 
+        si."itemId",
+        ii.name,
+        SUM(si.quantity) as "quantitySold"
+      FROM "SaleItem" si
+      JOIN "Sale" s ON si."saleId" = s.id
+      JOIN "InventoryItem" ii ON si."itemId" = ii.id
+      WHERE s."createdAt" >= ${startDate} AND s."createdAt" <= ${endDate}
+      GROUP BY si."itemId", ii.name
+      ORDER BY "quantitySold" DESC
+      LIMIT 10
+    `;
     res.json(withNames);
   } catch (error) {
     console.error("Error fetching top products:", error);
@@ -93,17 +100,23 @@ router.get("/inventory-usage", authenticateToken, async (req, res) => {
         quantity: true,
       },
     });
-    const result = await Promise.all(usage.map(async (entry) => {
-      const item = await prisma.inventoryItem.findUnique({
-        where: { id: entry.itemId },
-      });
-      return {
-        itemId: entry.itemId,
-        name: item?.name,
-        totalUsed: entry._sum.quantity,
-        currentStock: item?.quantity,
-      };
-    }));
+    // OPTIMIZED: Single raw SQL query with LEFT JOIN to eliminate N+1 queries
+    const result = await prisma.$queryRaw<Array<{
+      itemId: number;
+      name: string;
+      totalUsed: number;
+      currentStock: number;
+    }>>`
+      SELECT 
+        ii.id as "itemId",
+        ii.name,
+        COALESCE(SUM(si.quantity), 0) as "totalUsed",
+        ii.quantity as "currentStock"
+      FROM "InventoryItem" ii
+      LEFT JOIN "SaleItem" si ON ii.id = si."itemId"
+      GROUP BY ii.id, ii.name, ii.quantity
+      ORDER BY "totalUsed" DESC
+    `;
     res.json(result);
   } catch (error) {
     console.error("Error fetching inventory usage:", error);
@@ -125,22 +138,27 @@ router.get("/user-performance", authenticateToken, async (req, res) => {
         _all: true,
       },
     });
-    // Attach user details (name/email)
-    const results = await Promise.all(userSales.map(async (entry) => {
-      const user = entry.userId
-        ? await prisma.user.findUnique({
-            where: { id: entry.userId },
-          })
-        : null;
-      return {
-        userId: entry.userId,
-        name: user?.name || "Unknown", // fallback for null
-        email: user?.email || "N/A",
-        totalSales: entry._sum.totalAmount || 0,
-        totalPaid: entry._sum.paidAmount || 0,
-        saleCount: entry._count._all,
-      };
-    }));
+    // OPTIMIZED: Single raw SQL query with LEFT JOIN to eliminate N+1 queries
+    const results = await prisma.$queryRaw<Array<{
+      userId: number;
+      name: string;
+      email: string;
+      totalSales: number;
+      totalPaid: number;
+      saleCount: number;
+    }>>`
+      SELECT 
+        u.id as "userId",
+        COALESCE(u.name, 'Unknown') as name,
+        COALESCE(u.email, 'N/A') as email,
+        COALESCE(SUM(s."totalAmount"), 0) as "totalSales",
+        COALESCE(SUM(s."paidAmount"), 0) as "totalPaid",
+        COUNT(s.id) as "saleCount"
+      FROM "User" u
+      LEFT JOIN "Sale" s ON u.id = s."userId"
+      GROUP BY u.id, u.name, u.email
+      ORDER BY "totalSales" DESC
+    `;
     res.json(results);
   } catch (error) {
     console.error("Error fetching user sales performance:", error);

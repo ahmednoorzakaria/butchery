@@ -4,10 +4,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PDFService = void 0;
-const client_1 = require("@prisma/client");
 const date_fns_1 = require("date-fns");
 const pdfkit_1 = __importDefault(require("pdfkit"));
-const prisma = new client_1.PrismaClient();
+const prisma_1 = __importDefault(require("../lib/prisma"));
 class PDFService {
     constructor() {
         // Color scheme for modern UI
@@ -480,7 +479,7 @@ class PDFService {
     }
     async getDebtSummaryData() {
         try {
-            const customers = await prisma.customer.findMany({
+            const customers = await prisma_1.default.customer.findMany({
                 include: { transactions: true }
             });
             const debtData = customers.map(customer => {
@@ -512,7 +511,7 @@ class PDFService {
     }
     async getSalesData(startDate, endDate) {
         try {
-            const sales = await prisma.sale.findMany({
+            const sales = await prisma_1.default.sale.findMany({
                 where: {
                     createdAt: {
                         gte: new Date(startDate),
@@ -600,7 +599,7 @@ class PDFService {
     }
     async getProfitLossData(startDate, endDate) {
         try {
-            const sales = await prisma.sale.findMany({
+            const sales = await prisma_1.default.sale.findMany({
                 where: {
                     createdAt: {
                         gte: new Date(startDate),
@@ -668,7 +667,7 @@ class PDFService {
     }
     async getInventoryData() {
         try {
-            const inventory = await prisma.inventoryItem.findMany();
+            const inventory = await prisma_1.default.inventoryItem.findMany();
             const totalItems = inventory.length;
             const totalValue = inventory.reduce((sum, item) => {
                 const itemValue = (item.sellPrice || item.basePrice || 0) * item.quantity;
@@ -704,7 +703,7 @@ class PDFService {
     }
     async getCashFlowData(startDate, endDate) {
         try {
-            const sales = await prisma.sale.findMany({
+            const sales = await prisma_1.default.sale.findMany({
                 where: {
                     createdAt: {
                         gte: new Date(startDate),
@@ -733,7 +732,7 @@ class PDFService {
     }
     async getCustomerData(startDate, endDate) {
         try {
-            const customers = await prisma.customer.findMany({
+            const customers = await prisma_1.default.customer.findMany({
                 include: {
                     sales: {
                         where: {

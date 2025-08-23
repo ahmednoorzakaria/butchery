@@ -1,15 +1,17 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
-const client_1 = require("@prisma/client");
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const date_fns_1 = require("date-fns");
-const prisma = new client_1.PrismaClient();
+const prisma_1 = __importDefault(require("../lib/prisma"));
 const router = (0, express_1.Router)();
 // ✅ 1. GET /reports/outstanding-balances
 router.get("/outstanding-balances", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const customers = await prisma.customer.findMany({
+        const customers = await prisma_1.default.customer.findMany({
             include: {
                 transactions: true,
             },
@@ -36,7 +38,7 @@ router.get("/top-products", authMiddleware_1.authenticateToken, async (req, res)
     const startDate = start ? new Date(start) : (0, date_fns_1.subDays)(new Date(), 7);
     const endDate = end ? new Date(end) : new Date();
     try {
-        const items = await prisma.saleItem.groupBy({
+        const items = await prisma_1.default.saleItem.groupBy({
             by: ["itemId"],
             where: {
                 sale: {
@@ -56,16 +58,20 @@ router.get("/top-products", authMiddleware_1.authenticateToken, async (req, res)
             },
             take: 10, // return top 10
         });
-        const withNames = await Promise.all(items.map(async (item) => {
-            const itemInfo = await prisma.inventoryItem.findUnique({
-                where: { id: item.itemId },
-            });
-            return {
-                itemId: item.itemId,
-                name: itemInfo?.name,
-                quantitySold: item._sum.quantity,
-            };
-        }));
+        // OPTIMIZED: Single raw SQL query with JOINs to eliminate N+1 queries
+        const withNames = await prisma_1.default.$queryRaw `
+      SELECT 
+        si."itemId",
+        ii.name,
+        SUM(si.quantity) as "quantitySold"
+      FROM "SaleItem" si
+      JOIN "Sale" s ON si."saleId" = s.id
+      JOIN "InventoryItem" ii ON si."itemId" = ii.id
+      WHERE s."createdAt" >= ${startDate} AND s."createdAt" <= ${endDate}
+      GROUP BY si."itemId", ii.name
+      ORDER BY "quantitySold" DESC
+      LIMIT 10
+    `;
         res.json(withNames);
     }
     catch (error) {
@@ -76,23 +82,24 @@ router.get("/top-products", authMiddleware_1.authenticateToken, async (req, res)
 // ✅ 3. GET /reports/inventory-usage
 router.get("/inventory-usage", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const usage = await prisma.saleItem.groupBy({
+        const usage = await prisma_1.default.saleItem.groupBy({
             by: ["itemId"],
             _sum: {
                 quantity: true,
             },
         });
-        const result = await Promise.all(usage.map(async (entry) => {
-            const item = await prisma.inventoryItem.findUnique({
-                where: { id: entry.itemId },
-            });
-            return {
-                itemId: entry.itemId,
-                name: item?.name,
-                totalUsed: entry._sum.quantity,
-                currentStock: item?.quantity,
-            };
-        }));
+        // OPTIMIZED: Single raw SQL query with LEFT JOIN to eliminate N+1 queries
+        const result = await prisma_1.default.$queryRaw `
+      SELECT 
+        ii.id as "itemId",
+        ii.name,
+        COALESCE(SUM(si.quantity), 0) as "totalUsed",
+        ii.quantity as "currentStock"
+      FROM "InventoryItem" ii
+      LEFT JOIN "SaleItem" si ON ii.id = si."itemId"
+      GROUP BY ii.id, ii.name, ii.quantity
+      ORDER BY "totalUsed" DESC
+    `;
         res.json(result);
     }
     catch (error) {
@@ -104,7 +111,7 @@ router.get("/inventory-usage", authMiddleware_1.authenticateToken, async (req, r
 router.get("/user-performance", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         // Group sales by userId and sum totalAmount
-        const userSales = await prisma.sale.groupBy({
+        const userSales = await prisma_1.default.sale.groupBy({
             by: ["userId"],
             _sum: {
                 totalAmount: true,
@@ -114,22 +121,20 @@ router.get("/user-performance", authMiddleware_1.authenticateToken, async (req, 
                 _all: true,
             },
         });
-        // Attach user details (name/email)
-        const results = await Promise.all(userSales.map(async (entry) => {
-            const user = entry.userId
-                ? await prisma.user.findUnique({
-                    where: { id: entry.userId },
-                })
-                : null;
-            return {
-                userId: entry.userId,
-                name: user?.name || "Unknown", // fallback for null
-                email: user?.email || "N/A",
-                totalSales: entry._sum.totalAmount || 0,
-                totalPaid: entry._sum.paidAmount || 0,
-                saleCount: entry._count._all,
-            };
-        }));
+        // OPTIMIZED: Single raw SQL query with LEFT JOIN to eliminate N+1 queries
+        const results = await prisma_1.default.$queryRaw `
+      SELECT 
+        u.id as "userId",
+        COALESCE(u.name, 'Unknown') as name,
+        COALESCE(u.email, 'N/A') as email,
+        COALESCE(SUM(s."totalAmount"), 0) as "totalSales",
+        COALESCE(SUM(s."paidAmount"), 0) as "totalPaid",
+        COUNT(s.id) as "saleCount"
+      FROM "User" u
+      LEFT JOIN "Sale" s ON u.id = s."userId"
+      GROUP BY u.id, u.name, u.email
+      ORDER BY "totalSales" DESC
+    `;
         res.json(results);
     }
     catch (error) {
@@ -170,7 +175,7 @@ router.get("/sales-by-period", authMiddleware_1.authenticateToken, async (req, r
                     endDate = now;
             }
         }
-        const sales = await prisma.sale.findMany({
+        const sales = await prisma_1.default.sale.findMany({
             where: {
                 createdAt: {
                     gte: startDate,
@@ -291,7 +296,7 @@ router.get("/profit-loss", authMiddleware_1.authenticateToken, async (req, res) 
         const { start, end } = req.query;
         let startDate = start ? new Date(start) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         let endDate = end ? new Date(end) : new Date();
-        const sales = await prisma.sale.findMany({
+        const sales = await prisma_1.default.sale.findMany({
             where: {
                 createdAt: {
                     gte: startDate,
@@ -363,7 +368,7 @@ router.get("/profit-loss", authMiddleware_1.authenticateToken, async (req, res) 
 // ✅ 7. GET /reports/inventory-valuation
 router.get("/inventory-valuation", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany();
+        const inventory = await prisma_1.default.inventoryItem.findMany();
         const totalValue = inventory.reduce((sum, item) => {
             return sum + (item.quantity * (item.sellPrice || 0));
         }, 0);
@@ -407,7 +412,7 @@ router.get("/inventory-valuation", authMiddleware_1.authenticateToken, async (re
 // ✅ 8. GET /reports/enhanced-inventory
 router.get("/enhanced-inventory", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany();
+        const inventory = await prisma_1.default.inventoryItem.findMany();
         const totalItems = inventory.reduce((sum, item) => sum + item.quantity, 0);
         const totalValue = inventory.reduce((sum, item) => {
             return sum + (item.quantity * (item.sellPrice || 0));
@@ -472,7 +477,7 @@ router.get("/customer-analysis", authMiddleware_1.authenticateToken, async (req,
         const { start, end } = req.query;
         let startDate = start ? new Date(start) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         let endDate = end ? new Date(end) : new Date();
-        const customers = await prisma.customer.findMany({
+        const customers = await prisma_1.default.customer.findMany({
             include: {
                 sales: {
                     where: {
@@ -518,7 +523,7 @@ router.get("/customer-analysis", authMiddleware_1.authenticateToken, async (req,
 // ✅ 10. GET /reports/loss-analysis
 router.get("/loss-analysis", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany();
+        const inventory = await prisma_1.default.inventoryItem.findMany();
         const highRiskItems = inventory.filter(item => {
             return item.quantity <= (item.lowStockLimit || 5) ||
                 item.quantity === 0 ||
@@ -570,7 +575,7 @@ router.get("/cash-flow", authMiddleware_1.authenticateToken, async (req, res) =>
         const { start, end } = req.query;
         let startDate = start ? new Date(start) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
         let endDate = end ? new Date(end) : new Date();
-        const sales = await prisma.sale.findMany({
+        const sales = await prisma_1.default.sale.findMany({
             where: {
                 createdAt: {
                     gte: startDate,
@@ -617,7 +622,7 @@ router.get("/cash-flow", authMiddleware_1.authenticateToken, async (req, res) =>
 // ✅ 12. GET /reports/inventory-projections
 router.get("/inventory-projections", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany();
+        const inventory = await prisma_1.default.inventoryItem.findMany();
         let totalProjectedRevenue = 0;
         let totalProjectedCost = 0;
         const itemProjections = [];

@@ -92,14 +92,13 @@ export function Views({
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [searchInput, setSearchInput] = useState(searchTerm);
-  const [hasMore, setHasMore] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [accumulatedSales, setAccumulatedSales] = useState<Sale[]>([]);
+  const [filterType, setFilterType] = useState<'custom' | 'today' | 'week' | 'month' | 'year'>('month');
+  const [currentPage, setCurrentPage] = useState(1);
 
   // Check if current user is admin
   const isAdmin = localStorage.getItem("user_role") === "ADMIN";
 
-  // Fetch sales data with lazy loading
+  // Fetch sales data with optimized API
   const { 
     data: salesResponse, 
     isLoading: salesLoading, 
@@ -107,92 +106,47 @@ export function Views({
     refetch,
     isFetching 
   } = useQuery({
-    queryKey: ["sales", searchTerm, currentMonth],
+    queryKey: ["sales-optimized", searchTerm, currentMonth, filterType, currentPage],
     queryFn: async () => {
       try {
-        // If searching for a specific sale ID, fetch without date restrictions
-        if (searchTerm && !isNaN(parseInt(searchTerm))) {
-          const response = await salesAPI.getAll({ 
-            page: 1, 
-            limit: 1000, // Higher limit for ID searches
-            start: undefined,
-            end: undefined
-          });
-          setHasMore(false); // No more data for ID searches
-          return response;
+        // Build query parameters for optimized API
+        const params: any = {
+          filterType,
+          page: currentPage,
+          limit: 1000, // Increased limit for better performance
+        };
+
+        // Add search parameter if provided
+        if (searchTerm && searchTerm.trim()) {
+          params.search = searchTerm.trim();
         }
-        
-        // Regular month-based search with initial batch
-        const response = await salesAPI.getAll({ 
-          page: 1, 
-          limit: 50, // Smaller initial batch for lazy loading
-          start: subDays(currentMonth, 30).toISOString(),
-          end: new Date().toISOString()
-        });
-        
-        // Check if there are more pages
-        const totalPages = response?.data?.pagination?.totalPages || 1;
-        setHasMore(totalPages > 1);
-        
+
+        // Use the optimized API endpoint
+        const response = await salesAPI.getAllOptimized(params);
         return response;
       } catch (error) {
         console.error('Error fetching sales:', error);
         throw error;
       }
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 0, // Disable stale time to ensure fresh data on search
     gcTime: 10 * 60 * 1000, // 10 minutes
     retry: 2,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
+    enabled: true, // Always enable the query
   });
 
-  // Extract sales data safely and manage accumulated data
-  const initialSales = Array.isArray(salesResponse?.data?.sales) ? salesResponse.data.sales : 
-                      Array.isArray(salesResponse?.data) ? salesResponse.data : [];
+  // Extract sales data safely
+  const sales = Array.isArray(salesResponse?.data?.sales) ? salesResponse.data.sales : 
+                Array.isArray(salesResponse?.data) ? salesResponse.data : [];
   
-  // Use accumulated sales for display, fallback to initial sales
-  const sales = accumulatedSales.length > 0 ? accumulatedSales : initialSales;
-  
-  // Ensure query is executed when component mounts
-  useEffect(() => {
-    refetch();
-  }, [refetch]);
 
-  // Update accumulated sales when initial data changes
-  useEffect(() => {
-    if (initialSales.length > 0 && accumulatedSales.length === 0) {
-      setAccumulatedSales(initialSales);
-    }
-  }, [initialSales, accumulatedSales.length]);
-
-  // Add scroll event listener for infinite scroll
-  useEffect(() => {
-    const handleScroll = () => {
-      if (window.innerHeight + document.documentElement.scrollTop >= document.documentElement.offsetHeight - 100) {
-        // User is near bottom, load more data
-        if (hasMore && !isLoadingMore && !salesLoading) {
-          loadMoreSales();
-        }
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [hasMore, isLoadingMore, salesLoading]);
-
-  // Refetch data when month changes
-  useEffect(() => {
-    setHasMore(true); // Reset hasMore when month changes
-    setAccumulatedSales([]); // Reset accumulated sales
-    refetch();
-  }, [currentMonth, refetch]);
 
   // Handle search button click
   const handleSearch = () => {
     onSearchChange(searchInput);
-    setHasMore(true); // Reset hasMore when searching
-    setAccumulatedSales([]); // Reset accumulated sales
+    setCurrentPage(1); // Reset to first page when searching
   };
 
   // Handle search input change
@@ -203,77 +157,22 @@ export function Views({
   // Handle search input key press
   const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
       handleSearch();
     }
   };
 
-  // Load more sales data
-  const loadMoreSales = async () => {
-    if (isLoadingMore || !hasMore) return;
-    
-    setIsLoadingMore(true);
-    try {
-      // Calculate next page based on current data length
-      const nextPage = Math.floor(sales.length / 50) + 1;
-      
-      const response = await salesAPI.getAll({ 
-        page: nextPage, 
-        limit: 50,
-        start: subDays(currentMonth, 30).toISOString(),
-        end: new Date().toISOString()
-      });
-      
-      if (response?.data?.sales) {
-        // Append new sales to existing data
-        const newSales = response.data.sales;
-        setAccumulatedSales(prev => [...prev, ...newSales]);
-        
-        // Check if there are more pages
-        const totalPages = response.data.pagination?.totalPages || 1;
-        setHasMore(nextPage < totalPages);
-      }
-    } catch (error) {
-      console.error('Error loading more sales:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  };
+  // Update search input when searchTerm prop changes
+  useEffect(() => {
+    setSearchInput(searchTerm);
+  }, [searchTerm]);
 
   // Component state management
 
-  // Filter sales based on search, date, and user
+  // Filter sales based on user selection only (search is handled by backend)
   const filteredSales = sales.filter((sale: Sale) => {
-    const matchesSearch = (() => {
-      if (searchTerm === "") return true;
-      
-      // Check if search term is a number (exact sale ID match)
-      const searchAsNumber = parseInt(searchTerm);
-      if (!isNaN(searchAsNumber)) {
-        return sale.id === searchAsNumber;
-      }
-      
-      // For non-numeric searches, use includes for customer name and username
-      return (
-        sale.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (sale.user?.name && sale.user.name.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-    })();
-
-    // If searching by ID, don't apply date restrictions
-    const matchesDate = (() => {
-      if (searchTerm && !isNaN(parseInt(searchTerm))) {
-        return true; // Skip date filtering for ID searches
-      }
-      
-      const saleDate = new Date(sale.createdAt);
-      const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-      const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
-      return saleDate >= startDate && saleDate <= endDate;
-    })();
-
     const matchesUser = selectedUser === "all" || sale.userId.toString() === selectedUser;
-
-    return matchesSearch && matchesDate && matchesUser;
+    return matchesUser;
   });
 
   // Get unique users for filtering
@@ -283,32 +182,16 @@ export function Views({
 
   // Calculate current month's total
   const currentMonthTotal = sales ? sales
-    .filter((sale: Sale) => {
-      // If searching by ID, don't apply date restrictions to summary
-      if (searchTerm && !isNaN(parseInt(searchTerm))) {
-        return true;
-      }
-      
-      const saleDate = new Date(sale.createdAt);
-      const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-      const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
-      return saleDate >= startDate && saleDate <= endDate;
-    })
     .reduce((sum: number, sale: Sale) => sum + sale.totalAmount, 0) : 0;
 
   // Calculate current month's transaction count
-  const currentMonthTransactions = sales ? sales
-    .filter((sale: Sale) => {
-      // If searching by ID, don't apply date restrictions to summary
-      if (searchTerm && !isNaN(parseInt(searchTerm))) {
-        return true;
-      }
-      
-      const saleDate = new Date(sale.createdAt);
-      const startDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-      const endDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59);
-      return saleDate >= startDate && saleDate <= endDate;
-    }).length : 0;
+  const currentMonthTransactions = sales ? sales.length : 0;
+
+  // Handle filter type change
+  const handleFilterTypeChange = (newFilterType: 'custom' | 'today' | 'week' | 'month' | 'year') => {
+    setFilterType(newFilterType);
+    setCurrentPage(1); // Reset to first page when changing filter
+  };
 
   // Handle month navigation
   const handleMonthChange = (direction: 'prev' | 'next') => {
@@ -319,6 +202,12 @@ export function Views({
       newMonth.setMonth(newMonth.getMonth() + 1);
     }
     setCurrentMonth(newMonth);
+    setCurrentPage(1); // Reset to first page when changing month
+  };
+
+  // Handle pagination
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
   };
 
   const getPaymentMethodColor = (method: string) => {
@@ -461,7 +350,7 @@ export function Views({
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search by customer, sale ID, or username..."
+              placeholder="Search by sale ID, customer name, or phone..."
               value={searchInput}
               onChange={handleSearchInputChange}
               onKeyPress={handleSearchKeyPress}
@@ -470,6 +359,20 @@ export function Views({
           </div>
 
           <div className="flex gap-2">
+            {/* Date Filter */}
+            <Select value={filterType} onValueChange={handleFilterTypeChange}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Date filter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="today">Today</SelectItem>
+                <SelectItem value="week">This Week</SelectItem>
+                <SelectItem value="month">This Month</SelectItem>
+                <SelectItem value="year">This Year</SelectItem>
+                <SelectItem value="custom">Custom Range</SelectItem>
+              </SelectContent>
+            </Select>
+
             <Select value={selectedUser} onValueChange={onUserChange}>
               <SelectTrigger className="w-[160px]">
                 <SelectValue placeholder="Filter by user" />
@@ -483,9 +386,20 @@ export function Views({
                 ))}
               </SelectContent>
             </Select>
-            <Button onClick={handleSearch} disabled={searchInput === searchTerm}>
+            <Button onClick={handleSearch}>
               Search
             </Button>
+            {searchTerm && (
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  onSearchChange("");
+                  setSearchInput("");
+                }}
+              >
+                Clear
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -498,14 +412,14 @@ export function Views({
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-lg font-semibold">
-                  {searchTerm && !isNaN(parseInt(searchTerm)) 
-                    ? `Search Results for Sale #${searchTerm}`
+                  {searchTerm 
+                    ? `Search Results for "${searchTerm}"`
                     : `Sales for ${format(currentMonth, 'MMMM yyyy')}`
                   }
                 </h3>
                 <p className="text-sm text-muted-foreground">
                   {currentMonthTransactions} transactions • KSH {currentMonthTotal.toLocaleString()} total
-                  {searchTerm && !isNaN(parseInt(searchTerm)) && " (All time)"}
+                  {searchTerm && " (Filtered results)"}
                 </p>
               </div>
               <div className="text-right">
@@ -621,36 +535,7 @@ export function Views({
           </Card>
         ))}
 
-        {/* Load More Button */}
-        {hasMore && (
-          <div className="flex justify-center mt-6">
-            <Button
-              variant="outline"
-              onClick={loadMoreSales}
-              disabled={isLoadingMore}
-              className="flex items-center gap-2"
-            >
-              {isLoadingMore ? (
-                <>
-                  <LoadingSpinner size="sm" />
-                  Loading...
-                </>
-              ) : (
-                'Load More Sales'
-              )}
-            </Button>
-          </div>
-        )}
 
-        {/* Loading indicator for infinite scroll */}
-        {isLoadingMore && (
-          <div className="flex justify-center mt-4">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <LoadingSpinner size="sm" />
-              <span>Loading more sales...</span>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Sale Detail Dialog */}
@@ -819,13 +704,43 @@ export function Views({
               onClick={() => {
                 onSearchChange("");
                 setSearchInput("");
-                setHasMore(true);
-                setAccumulatedSales([]);
               }}
             >
               Clear Filters
             </Button>
           </div>
+        </Card>
+      )}
+
+      {/* Pagination Controls */}
+      {salesResponse?.data?.pagination && salesResponse.data.pagination.totalPages > 1 && (
+        <Card className="mt-4">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-muted-foreground">
+                Showing page {salesResponse.data.pagination.currentPage} of {salesResponse.data.pagination.totalPages} 
+                ({salesResponse.data.pagination.totalCount} total sales)
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(salesResponse.data.pagination.currentPage - 1)}
+                  disabled={!salesResponse.data.pagination.hasPrevPage}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(salesResponse.data.pagination.currentPage + 1)}
+                  disabled={!salesResponse.data.pagination.hasNextPage}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </CardContent>
         </Card>
       )}
 

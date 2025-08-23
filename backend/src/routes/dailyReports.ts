@@ -3,13 +3,12 @@ import { authenticateToken } from "../middleware/authMiddleware";
 import { SchedulerService } from "../services/schedulerService";
 import { PDFService } from "../services/pdfService";
 import { EmailService } from "../services/emailService";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../lib/prisma";
 
 const router = Router();
 const schedulerService = new SchedulerService();
 const pdfService = new PDFService();
 const emailService = new EmailService();
-const prisma = new PrismaClient();
 
 // Initialize scheduler when the module loads
 schedulerService.initialize().then(() => {

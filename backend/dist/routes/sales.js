@@ -4,17 +4,16 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
-const client_1 = require("@prisma/client");
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const date_fns_1 = require("date-fns");
-const prisma = new client_1.PrismaClient();
+const prisma_1 = __importDefault(require("../lib/prisma"));
 const router = (0, express_1.Router)();
 // Create Customer
 router.post("/customers", authMiddleware_1.authenticateToken, async (req, res) => {
     const { name, phone } = req.body;
     try {
-        const customer = await prisma.customer.create({ data: { name, phone } });
+        const customer = await prisma_1.default.customer.create({ data: { name, phone } });
         res.status(201).json(customer);
     }
     catch (error) {
@@ -23,7 +22,7 @@ router.post("/customers", authMiddleware_1.authenticateToken, async (req, res) =
 });
 // Get Customers
 router.get("/customers", authMiddleware_1.authenticateToken, async (req, res) => {
-    const customers = await prisma.customer.findMany();
+    const customers = await prisma_1.default.customer.findMany();
     res.json(customers);
 });
 // Update Customer
@@ -32,7 +31,7 @@ router.put("/customers/:id", authMiddleware_1.authenticateToken, async (req, res
     const { name, phone } = req.body;
     try {
         // Check if customer exists
-        const existingCustomer = await prisma.customer.findUnique({
+        const existingCustomer = await prisma_1.default.customer.findUnique({
             where: { id: parseInt(id) }
         });
         if (!existingCustomer) {
@@ -40,7 +39,7 @@ router.put("/customers/:id", authMiddleware_1.authenticateToken, async (req, res
         }
         // Check if phone number is already taken by another customer
         if (phone && phone !== existingCustomer.phone) {
-            const phoneExists = await prisma.customer.findFirst({
+            const phoneExists = await prisma_1.default.customer.findFirst({
                 where: {
                     phone,
                     id: { not: parseInt(id) }
@@ -51,7 +50,7 @@ router.put("/customers/:id", authMiddleware_1.authenticateToken, async (req, res
             }
         }
         // Update customer
-        const updatedCustomer = await prisma.customer.update({
+        const updatedCustomer = await prisma_1.default.customer.update({
             where: { id: parseInt(id) },
             data: {
                 name: name || existingCustomer.name,
@@ -81,7 +80,7 @@ router.post("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
     }
     try {
         // Use a transaction to ensure data consistency
-        const result = await prisma.$transaction(async (tx) => {
+        const result = await prisma_1.default.$transaction(async (tx) => {
             let totalAmount = 0;
             const saleItemsData = [];
             const inventoryUpdates = [];
@@ -191,7 +190,7 @@ router.put("/sales/:id", authMiddleware_1.authenticateToken, async (req, res) =>
     }
     try {
         // First, get the existing sale to understand what needs to be reverted
-        const existingSale = await prisma.sale.findUnique({
+        const existingSale = await prisma_1.default.sale.findUnique({
             where: { id: parseInt(id) },
             include: { items: true }
         });
@@ -199,7 +198,7 @@ router.put("/sales/:id", authMiddleware_1.authenticateToken, async (req, res) =>
             return res.status(404).json({ error: "Sale not found" });
         }
         // Use a transaction to ensure data consistency
-        const result = await prisma.$transaction(async (tx) => {
+        const result = await prisma_1.default.$transaction(async (tx) => {
             // Step 1: Revert the existing sale's inventory impact
             for (const existingItem of existingSale.items) {
                 // Restore the original quantity
@@ -325,7 +324,7 @@ router.post("/customers/:id/payments", authMiddleware_1.authenticateToken, async
     }
     try {
         // Query sales with raw SQL to handle legacy payment types gracefully
-        const allSales = await prisma.$queryRaw `
+        const allSales = await prisma_1.default.$queryRaw `
       SELECT id, "customerId", "totalAmount", "paidAmount", "createdAt", "paymentType"
       FROM "Sale" 
       WHERE "customerId" = ${customerId}
@@ -338,11 +337,11 @@ router.post("/customers/:id/payments", authMiddleware_1.authenticateToken, async
             if (saleDue <= 0)
                 continue;
             const paymentToApply = Math.min(saleDue, remainingPayment);
-            await prisma.sale.update({
+            await prisma_1.default.sale.update({
                 where: { id: sale.id },
                 data: { paidAmount: { increment: paymentToApply } },
             });
-            await prisma.customerTransaction.create({
+            await prisma_1.default.customerTransaction.create({
                 data: {
                     customerId,
                     amount: paymentToApply,
@@ -354,7 +353,7 @@ router.post("/customers/:id/payments", authMiddleware_1.authenticateToken, async
                 break;
         }
         if (remainingPayment > 0) {
-            await prisma.customerTransaction.create({
+            await prisma_1.default.customerTransaction.create({
                 data: {
                     customerId,
                     amount: remainingPayment,
@@ -372,7 +371,7 @@ router.post("/customers/:id/payments", authMiddleware_1.authenticateToken, async
 // Get Customer Transactions
 router.get("/customers/:id/transactions", authMiddleware_1.authenticateToken, async (req, res) => {
     const customerId = parseInt(req.params.id);
-    const transactions = await prisma.customerTransaction.findMany({
+    const transactions = await prisma_1.default.customerTransaction.findMany({
         where: { customerId },
         include: {
             Sale: {
@@ -395,7 +394,7 @@ router.get("/customers/:id/transactions", authMiddleware_1.authenticateToken, as
 router.get("/sales/:id/receipt", authMiddleware_1.authenticateToken, async (req, res) => {
     const saleId = parseInt(req.params.id);
     const format = req.query.format || "json";
-    const sale = await prisma.sale.findUnique({
+    const sale = await prisma_1.default.sale.findUnique({
         where: { id: saleId },
         include: {
             customer: true,
@@ -427,29 +426,41 @@ router.get("/sales/:id/receipt", authMiddleware_1.authenticateToken, async (req,
         res.json(sale);
     }
 });
-// Sales Filter & Summary
+// Sales Filter & Summary - OPTIMIZED to eliminate N+1 queries with search functionality
 router.get("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
-    let { start, end, page = 1, limit = 300 } = req.query;
-    // Parse pagination parameters
-    const pageNum = parseInt(page) || 1;
-    const limitNum = Math.min(parseInt(limit) || 300, 300); // Max 300 items per page
-    const skip = (pageNum - 1) * limitNum;
+    let { start, end, search } = req.query;
     if (!start || isNaN(Date.parse(start)))
         start = (0, date_fns_1.subDays)(new Date(), 7).toISOString();
     if (!end || isNaN(Date.parse(end)))
         end = new Date().toISOString();
     try {
-        // First, get the total count for pagination
-        const totalCount = await prisma.sale.count({
-            where: {
-                createdAt: { gte: new Date(start), lte: new Date(end) },
-            },
-        });
-        // Then get the paginated sales data with optimized includes
-        const sales = await prisma.sale.findMany({
-            where: {
-                createdAt: { gte: new Date(start), lte: new Date(end) },
-            },
+        // Build where clause for search functionality
+        const whereClause = {
+            createdAt: { gte: new Date(start), lte: new Date(end) },
+        };
+        // Add search functionality
+        if (search && search.trim()) {
+            const searchTerm = search.trim();
+            // Check if search is a number (sale ID)
+            const saleId = parseInt(searchTerm);
+            if (!isNaN(saleId)) {
+                whereClause.OR = [
+                    { id: saleId },
+                    { customer: { name: { contains: searchTerm, mode: 'insensitive' } } },
+                    { customer: { phone: { contains: searchTerm, mode: 'insensitive' } } },
+                ];
+            }
+            else {
+                // Search by customer name or phone
+                whereClause.OR = [
+                    { customer: { name: { contains: searchTerm, mode: 'insensitive' } } },
+                    { customer: { phone: { contains: searchTerm, mode: 'insensitive' } } },
+                ];
+            }
+        }
+        // OPTIMIZED: Single query to get all sales with search
+        const sales = await prisma_1.default.sale.findMany({
+            where: whereClause,
             include: {
                 customer: {
                     select: {
@@ -478,23 +489,10 @@ router.get("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
                 },
             },
             orderBy: { createdAt: "desc" },
-            skip,
-            take: limitNum,
         });
-        // Calculate pagination info
-        const totalPages = Math.ceil(totalCount / limitNum);
-        const hasNextPage = pageNum < totalPages;
-        const hasPrevPage = pageNum > 1;
         res.json({
             sales,
-            pagination: {
-                currentPage: pageNum,
-                totalPages,
-                totalCount,
-                hasNextPage,
-                hasPrevPage,
-                limit: limitNum,
-            }
+            totalCount: sales.length,
         });
     }
     catch (error) {
@@ -504,7 +502,7 @@ router.get("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
 });
 router.get("/sales/filter", authMiddleware_1.authenticateToken, async (req, res) => {
     const { customerId, start, end } = req.query;
-    const sales = await prisma.sale.findMany({
+    const sales = await prisma_1.default.sale.findMany({
         where: {
             customerId: parseInt(customerId),
             createdAt: {
@@ -544,7 +542,7 @@ router.get("/sales/report", authMiddleware_1.authenticateToken, async (req, res)
             end = (0, date_fns_1.endOfDay)(now);
             break;
     }
-    const sales = await prisma.sale.findMany({
+    const sales = await prisma_1.default.sale.findMany({
         where: { createdAt: { gte: start, lte: end } },
         include: { items: { include: { item: true } } },
     });
@@ -576,7 +574,7 @@ router.get("/sales/report", authMiddleware_1.authenticateToken, async (req, res)
 });
 router.get("/reports/outstanding-balances", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const customers = await prisma.customer.findMany({ include: { transactions: true } });
+        const customers = await prisma_1.default.customer.findMany({ include: { transactions: true } });
         const balances = customers.map((c) => {
             const balance = c.transactions.reduce((sum, tx) => sum + tx.amount, 0);
             return { customerId: c.id, name: c.name, balance };
@@ -588,82 +586,73 @@ router.get("/reports/outstanding-balances", authMiddleware_1.authenticateToken, 
         res.status(500).json({ error: "Server error" });
     }
 });
+// OPTIMIZED: Top Products Report - Eliminates N+1 queries
 router.get("/reports/top-products", authMiddleware_1.authenticateToken, async (req, res) => {
     const { start, end } = req.query;
     const startDate = start ? new Date(start) : (0, date_fns_1.subDays)(new Date(), 7);
     const endDate = end ? new Date(end) : new Date();
     try {
-        const items = await prisma.saleItem.groupBy({
-            by: ["itemId"],
-            where: {
-                sale: { createdAt: { gte: startDate, lte: endDate } },
-            },
-            _sum: { quantity: true },
-            orderBy: { _sum: { quantity: "desc" } },
-            take: 10,
-        });
-        const withNames = await Promise.all(items.map(async (item) => {
-            const itemInfo = await prisma.inventoryItem.findUnique({
-                where: { id: item.itemId },
-            });
-            return {
-                itemId: item.itemId,
-                name: itemInfo?.name,
-                quantitySold: item._sum.quantity,
-            };
-        }));
-        res.json(withNames);
+        // Single optimized query with joins
+        const topProducts = await prisma_1.default.$queryRaw `
+      SELECT 
+        si."itemId",
+        ii.name,
+        SUM(si.quantity) as "quantitySold"
+      FROM "SaleItem" si
+      JOIN "Sale" s ON si."saleId" = s.id
+      JOIN "InventoryItem" ii ON si."itemId" = ii.id
+      WHERE s."createdAt" >= ${startDate} AND s."createdAt" <= ${endDate}
+      GROUP BY si."itemId", ii.name
+      ORDER BY "quantitySold" DESC
+      LIMIT 10
+    `;
+        res.json(topProducts);
     }
     catch (error) {
         console.error("Top products error:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
+// OPTIMIZED: Inventory Usage Report - Eliminates N+1 queries
 router.get("/reports/inventory-usage", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const usage = await prisma.saleItem.groupBy({
-            by: ["itemId"],
-            _sum: { quantity: true },
-        });
-        const result = await Promise.all(usage.map(async (entry) => {
-            const item = await prisma.inventoryItem.findUnique({
-                where: { id: entry.itemId },
-            });
-            return {
-                itemId: entry.itemId,
-                name: item?.name,
-                totalUsed: entry._sum.quantity,
-                currentStock: item?.quantity,
-            };
-        }));
-        res.json(result);
+        // Single optimized query with joins
+        const usage = await prisma_1.default.$queryRaw `
+      SELECT 
+        ii.id as "itemId",
+        ii.name,
+        COALESCE(SUM(si.quantity), 0) as "totalUsed",
+        ii.quantity as "currentStock"
+      FROM "InventoryItem" ii
+      LEFT JOIN "SaleItem" si ON ii.id = si."itemId"
+      GROUP BY ii.id, ii.name, ii.quantity
+      ORDER BY "totalUsed" DESC
+    `;
+        res.json(usage);
     }
     catch (error) {
         console.error("Inventory usage error:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
+// OPTIMIZED: User Performance Report - Eliminates N+1 queries
 router.get("/reports/user-performance", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const userSales = await prisma.sale.groupBy({
-            by: ["userId"],
-            _sum: { totalAmount: true, paidAmount: true },
-            _count: { _all: true },
-        });
-        const results = await Promise.all(userSales.map(async (entry) => {
-            const user = entry.userId
-                ? await prisma.user.findUnique({ where: { id: entry.userId } })
-                : null;
-            return {
-                userId: entry.userId,
-                name: user?.name || "Unknown",
-                email: user?.email || "N/A",
-                totalSales: entry._sum.totalAmount || 0,
-                totalPaid: entry._sum.paidAmount || 0,
-                saleCount: entry._count._all,
-            };
-        }));
-        res.json(results);
+        // Single optimized query with joins
+        const userPerformance = await prisma_1.default.$queryRaw `
+      SELECT 
+        u.id as "userId",
+        u.name,
+        u.email,
+        COALESCE(SUM(s."totalAmount"), 0) as "totalSales",
+        COALESCE(SUM(s."paidAmount"), 0) as "totalPaid",
+        COUNT(s.id) as "saleCount"
+      FROM "User" u
+      LEFT JOIN "Sale" s ON u.id = s."userId"
+      GROUP BY u.id, u.name, u.email
+      ORDER BY "totalSales" DESC
+    `;
+        res.json(userPerformance);
     }
     catch (error) {
         console.error("User performance error:", error);
@@ -676,7 +665,7 @@ router.get("/reports/sales-by-date", authMiddleware_1.authenticateToken, async (
     const startDate = start ? new Date(start) : (0, date_fns_1.subDays)(new Date(), 30);
     const endDate = end ? new Date(end) : new Date();
     try {
-        const sales = await prisma.sale.findMany({
+        const sales = await prisma_1.default.sale.findMany({
             where: {
                 createdAt: { gte: startDate, lte: endDate },
             },
@@ -765,7 +754,7 @@ router.get("/reports/profit-loss", authMiddleware_1.authenticateToken, async (re
     const startDate = start ? new Date(start) : (0, date_fns_1.subDays)(new Date(), 30);
     const endDate = end ? new Date(end) : new Date();
     try {
-        const sales = await prisma.sale.findMany({
+        const sales = await prisma_1.default.sale.findMany({
             where: {
                 createdAt: { gte: startDate, lte: endDate },
             },
@@ -863,7 +852,7 @@ router.get("/reports/profit-loss", authMiddleware_1.authenticateToken, async (re
 // ✅ NEW: Inventory Valuation Report
 router.get("/reports/inventory-valuation", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany({
+        const inventory = await prisma_1.default.inventoryItem.findMany({
             include: {
                 saleItems: {
                     include: {
@@ -932,7 +921,7 @@ router.get("/reports/customer-analysis", authMiddleware_1.authenticateToken, asy
     const startDate = start ? new Date(start) : (0, date_fns_1.subDays)(new Date(), 90);
     const endDate = end ? new Date(end) : new Date();
     try {
-        const customers = await prisma.customer.findMany({
+        const customers = await prisma_1.default.customer.findMany({
             include: {
                 sales: {
                     where: {
@@ -1012,7 +1001,7 @@ router.get("/reports/enhanced-sales", authMiddleware_1.authenticateToken, async 
     const startDate = start ? new Date(start) : (0, date_fns_1.subDays)(new Date(), 7);
     const endDate = end ? new Date(end) : new Date();
     try {
-        const sales = await prisma.sale.findMany({
+        const sales = await prisma_1.default.sale.findMany({
             where: {
                 createdAt: { gte: startDate, lte: endDate },
             },
@@ -1160,7 +1149,7 @@ router.get("/reports/sales-by-period", authMiddleware_1.authenticateToken, async
                     endDate = (0, date_fns_1.endOfDay)(now);
             }
         }
-        const sales = await prisma.sale.findMany({
+        const sales = await prisma_1.default.sale.findMany({
             where: {
                 createdAt: { gte: startDate, lte: endDate },
             },
@@ -1281,7 +1270,7 @@ router.get("/reports/sales-by-period", authMiddleware_1.authenticateToken, async
 // ✅ NEW: Loss Report - Items expiring, low stock, waste analysis
 router.get("/reports/loss-analysis", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany({
+        const inventory = await prisma_1.default.inventoryItem.findMany({
             include: {
                 saleItems: {
                     include: {
@@ -1371,7 +1360,7 @@ router.get("/reports/loss-analysis", authMiddleware_1.authenticateToken, async (
 // ✅ NEW: Enhanced Inventory Report with Stock Movement Analysis
 router.get("/reports/enhanced-inventory", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const inventory = await prisma.inventoryItem.findMany({
+        const inventory = await prisma_1.default.inventoryItem.findMany({
             include: {
                 saleItems: {
                     include: {
@@ -1462,7 +1451,7 @@ router.get("/reports/cash-flow", authMiddleware_1.authenticateToken, async (req,
     const startDate = start ? new Date(start) : (0, date_fns_1.subDays)(new Date(), 30);
     const endDate = end ? new Date(end) : new Date();
     try {
-        const sales = await prisma.sale.findMany({
+        const sales = await prisma_1.default.sale.findMany({
             where: {
                 createdAt: { gte: startDate, lte: endDate },
             },
@@ -1548,7 +1537,7 @@ router.get("/reports/cash-flow", authMiddleware_1.authenticateToken, async (req,
 router.get("/debug/inventory/:itemId", async (req, res) => {
     try {
         const itemId = parseInt(req.params.itemId);
-        const item = await prisma.inventoryItem.findUnique({
+        const item = await prisma_1.default.inventoryItem.findUnique({
             where: { id: itemId },
             include: {
                 transactions: {
@@ -1573,7 +1562,7 @@ router.get("/debug/inventory/:itemId", async (req, res) => {
 // Debug endpoint to list all inventory items
 router.get("/debug/inventory", async (req, res) => {
     try {
-        const items = await prisma.inventoryItem.findMany({
+        const items = await prisma_1.default.inventoryItem.findMany({
             include: {
                 transactions: {
                     orderBy: { createdAt: 'desc' },
@@ -1612,7 +1601,7 @@ router.post("/test-sale", async (req, res) => {
     try {
         console.log('Test sale request:', { customerId, items, discount, paidAmount, paymentType });
         // Use a transaction to ensure data consistency
-        const result = await prisma.$transaction(async (tx) => {
+        const result = await prisma_1.default.$transaction(async (tx) => {
             let totalAmount = 0;
             const saleItemsData = [];
             const inventoryUpdates = [];

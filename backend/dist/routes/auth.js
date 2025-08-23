@@ -5,11 +5,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 // src/routes/auth.ts
 const express_1 = require("express");
-const client_1 = require("@prisma/client");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const prisma_1 = __importDefault(require("../lib/prisma"));
 const router = (0, express_1.Router)();
-const prisma = new client_1.PrismaClient();
 // auth.ts
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret_here_change_this_in_production";
 console.log("JWT_SECRET configured:", JWT_SECRET ? "YES" : "NO");
@@ -22,7 +21,7 @@ router.post("/register", async (req, res) => {
             return res.status(400).json({ error: "All fields are required" });
         }
         // Check for existing user by email, phone, or name
-        const existing = await prisma.user.findFirst({
+        const existing = await prisma_1.default.user.findFirst({
             where: {
                 OR: [{ email }, { phone }, { name }],
             },
@@ -32,7 +31,7 @@ router.post("/register", async (req, res) => {
         }
         const hashedPassword = await bcryptjs_1.default.hash(password, 10);
         const normalizedRole = role?.toUpperCase() === "ADMIN" ? "ADMIN" : "SALES";
-        const user = await prisma.user.create({
+        const user = await prisma_1.default.user.create({
             data: {
                 name,
                 email,
@@ -56,7 +55,7 @@ router.post("/login", async (req, res) => {
         const { email, password } = req.body;
         if (!email || !password)
             return res.status(400).json({ error: "Missing email or password" });
-        const user = await prisma.user.findUnique({ where: { email } });
+        const user = await prisma_1.default.user.findUnique({ where: { email } });
         if (!user)
             return res.status(401).json({ error: "Invalid credentials" });
         console.log("User found in database:", { id: user.id, name: user.name, email: user.email, role: user.role });

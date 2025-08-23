@@ -1,9 +1,7 @@
 import cron from 'node-cron';
 import { PDFService } from './pdfService';
 import { EmailService } from './emailService';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma';
 
 export class SchedulerService {
   private pdfService: PDFService;

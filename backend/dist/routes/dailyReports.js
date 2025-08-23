@@ -1,16 +1,18 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const schedulerService_1 = require("../services/schedulerService");
 const pdfService_1 = require("../services/pdfService");
 const emailService_1 = require("../services/emailService");
-const client_1 = require("@prisma/client");
+const prisma_1 = __importDefault(require("../lib/prisma"));
 const router = (0, express_1.Router)();
 const schedulerService = new schedulerService_1.SchedulerService();
 const pdfService = new pdfService_1.PDFService();
 const emailService = new emailService_1.EmailService();
-const prisma = new client_1.PrismaClient();
 // Initialize scheduler when the module loads
 schedulerService.initialize().then(() => {
     schedulerService.scheduleDailyReports();
@@ -157,7 +159,7 @@ router.post("/send-complete-report", authMiddleware_1.authenticateToken, async (
         // Generate the daily report HTML
         const pdfBuffer = await pdfService.generateDailyReport(new Date());
         // Get debt summary data
-        const customers = await prisma.customer.findMany({
+        const customers = await prisma_1.default.customer.findMany({
             include: { transactions: true }
         });
         const debtData = customers.map(customer => {
@@ -210,7 +212,7 @@ router.post("/debt-summary", authMiddleware_1.authenticateToken, async (req, res
             return res.status(400).json({ error: "Recipient email is required" });
         }
         // Fetch debt data
-        const customers = await prisma.customer.findMany({
+        const customers = await prisma_1.default.customer.findMany({
             include: { transactions: true }
         });
         const debtData = customers.map(customer => {

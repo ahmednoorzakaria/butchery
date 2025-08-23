@@ -1,9 +1,7 @@
-import { PrismaClient } from '@prisma/client';
 import { faker } from '@faker-js/faker';
 import bcrypt from 'bcryptjs';
 import { subDays, subMonths, format } from 'date-fns';
-
-const prisma = new PrismaClient();
+import prisma from './lib/prisma';
 
 // Real butchery inventory items
 const INVENTORY_ITEMS = [

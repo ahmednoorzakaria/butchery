@@ -1,9 +1,8 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/authMiddleware";
-import { PrismaClient } from "@prisma/client";
+import prisma from "../lib/prisma";
 
 const router = Router();
-const prisma = new PrismaClient();
 
 // Get all expenses
 router.get("/", authenticateToken, async (req, res) => {

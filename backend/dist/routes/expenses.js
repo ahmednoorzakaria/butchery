@@ -1,14 +1,16 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const authMiddleware_1 = require("../middleware/authMiddleware");
-const client_1 = require("@prisma/client");
+const prisma_1 = __importDefault(require("../lib/prisma"));
 const router = (0, express_1.Router)();
-const prisma = new client_1.PrismaClient();
 // Get all expenses
 router.get("/", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const expenses = await prisma.expense.findMany({
+        const expenses = await prisma_1.default.expense.findMany({
             orderBy: { date: 'desc' }
         });
         res.json(expenses);
@@ -24,7 +26,7 @@ router.get("/monthly/:year/:month", authMiddleware_1.authenticateToken, async (r
         const { year, month } = req.params;
         const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
         const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
-        const expenses = await prisma.expense.findMany({
+        const expenses = await prisma_1.default.expense.findMany({
             where: {
                 date: {
                     gte: startDate,
@@ -53,7 +55,7 @@ router.get("/monthly/:year/:month", authMiddleware_1.authenticateToken, async (r
 router.get("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
-        const expense = await prisma.expense.findUnique({
+        const expense = await prisma_1.default.expense.findUnique({
             where: { id: parseInt(id) }
         });
         if (!expense) {
@@ -83,7 +85,7 @@ router.post("/", authMiddleware_1.authenticateToken, async (req, res) => {
                 error: "Amount, reason, and recipient are required"
             });
         }
-        const expense = await prisma.expense.create({
+        const expense = await prisma_1.default.expense.create({
             data: {
                 amount: parseFloat(amount),
                 reason,
@@ -113,13 +115,13 @@ router.put("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         const { id } = req.params;
         const { amount, reason, recipient, date, notes, category } = req.body;
-        const existingExpense = await prisma.expense.findUnique({
+        const existingExpense = await prisma_1.default.expense.findUnique({
             where: { id: parseInt(id) }
         });
         if (!existingExpense) {
             return res.status(404).json({ error: "Expense not found" });
         }
-        const updatedExpense = await prisma.expense.update({
+        const updatedExpense = await prisma_1.default.expense.update({
             where: { id: parseInt(id) },
             data: {
                 amount: amount ? parseFloat(amount) : undefined,
@@ -152,13 +154,13 @@ router.delete("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
     console.log('Delete expense - Access granted for user:', req.userId);
     try {
         const { id } = req.params;
-        const existingExpense = await prisma.expense.findUnique({
+        const existingExpense = await prisma_1.default.expense.findUnique({
             where: { id: parseInt(id) }
         });
         if (!existingExpense) {
             return res.status(404).json({ error: "Expense not found" });
         }
-        await prisma.expense.delete({
+        await prisma_1.default.expense.delete({
             where: { id: parseInt(id) }
         });
         res.json({ message: "Expense deleted successfully" });
@@ -171,7 +173,7 @@ router.delete("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
 // Get expense categories
 router.get("/categories", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const categories = await prisma.expense.groupBy({
+        const categories = await prisma_1.default.expense.groupBy({
             by: ['category'],
             _count: {
                 category: true
@@ -204,7 +206,7 @@ router.get("/monthly/:year/:month/report", authMiddleware_1.authenticateToken, a
         const { year, month } = req.params;
         const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
         const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
-        const expenses = await prisma.expense.findMany({
+        const expenses = await prisma_1.default.expense.findMany({
             where: {
                 date: {
                     gte: startDate,
@@ -246,7 +248,7 @@ router.get("/monthly/:year/:month/comprehensive", authMiddleware_1.authenticateT
         const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
         const endDate = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59);
         // Fetch expenses for the month
-        const expenses = await prisma.expense.findMany({
+        const expenses = await prisma_1.default.expense.findMany({
             where: {
                 date: {
                     gte: startDate,
@@ -256,7 +258,7 @@ router.get("/monthly/:year/:month/comprehensive", authMiddleware_1.authenticateT
             orderBy: { date: 'desc' }
         });
         // Fetch sales for the month
-        const sales = await prisma.sale.findMany({
+        const sales = await prisma_1.default.sale.findMany({
             where: {
                 createdAt: {
                     gte: startDate,
@@ -273,7 +275,7 @@ router.get("/monthly/:year/:month/comprehensive", authMiddleware_1.authenticateT
             },
         });
         // Fetch inventory status
-        const inventory = await prisma.inventoryItem.findMany();
+        const inventory = await prisma_1.default.inventoryItem.findMany();
         // Calculate summaries
         const totalExpenses = expenses.reduce((sum, expense) => sum + expense.amount, 0);
         const totalSales = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);

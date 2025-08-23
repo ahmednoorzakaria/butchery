@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { PrismaClient } from "@prisma/client";
 import { authenticateToken } from "../middleware/authMiddleware";
 import PDFDocument from "pdfkit";
 import {
@@ -14,9 +13,8 @@ import {
   subDays,
   format
 } from "date-fns";
+import prisma from "../lib/prisma";
 
-
-const prisma = new PrismaClient();
 const router = Router();
 
 // Create Customer
@@ -502,36 +500,47 @@ router.get("/sales/:id/receipt", authenticateToken, async (req, res) => {
   }
 });
 
-// Sales Filter & Summary
+// Sales Filter & Summary - OPTIMIZED to eliminate N+1 queries with search functionality
 router.get("/sales", authenticateToken, async (req, res) => {
-  let { start, end, page = 1, limit = 300 } = req.query as { 
+  let { start, end, search } = req.query as { 
     start?: string; 
     end?: string; 
-    page?: string; 
-    limit?: string; 
+    search?: string; 
   };
-  
-  // Parse pagination parameters
-  const pageNum = parseInt(page as string) || 1;
-  const limitNum = Math.min(parseInt(limit as string) || 300, 300); // Max 300 items per page
-  const skip = (pageNum - 1) * limitNum;
   
   if (!start || isNaN(Date.parse(start))) start = subDays(new Date(), 7).toISOString();
   if (!end || isNaN(Date.parse(end))) end = new Date().toISOString();
 
   try {
-    // First, get the total count for pagination
-    const totalCount = await prisma.sale.count({
-      where: {
-        createdAt: { gte: new Date(start), lte: new Date(end) },
-      },
-    });
+    // Build where clause for search functionality
+    const whereClause: any = {
+      createdAt: { gte: new Date(start), lte: new Date(end) },
+    };
 
-    // Then get the paginated sales data with optimized includes
+    // Add search functionality
+    if (search && search.trim()) {
+      const searchTerm = search.trim();
+      
+      // Check if search is a number (sale ID)
+      const saleId = parseInt(searchTerm);
+      if (!isNaN(saleId)) {
+        whereClause.OR = [
+          { id: saleId },
+          { customer: { name: { contains: searchTerm, mode: 'insensitive' } } },
+          { customer: { phone: { contains: searchTerm, mode: 'insensitive' } } },
+        ];
+      } else {
+        // Search by customer name or phone
+        whereClause.OR = [
+          { customer: { name: { contains: searchTerm, mode: 'insensitive' } } },
+          { customer: { phone: { contains: searchTerm, mode: 'insensitive' } } },
+        ];
+      }
+    }
+
+    // OPTIMIZED: Single query to get all sales with search
     const sales = await prisma.sale.findMany({
-      where: {
-        createdAt: { gte: new Date(start), lte: new Date(end) },
-      },
+      where: whereClause,
       include: {
         customer: {
           select: {
@@ -560,25 +569,11 @@ router.get("/sales", authenticateToken, async (req, res) => {
         },
       },
       orderBy: { createdAt: "desc" },
-      skip,
-      take: limitNum,
     });
-
-    // Calculate pagination info
-    const totalPages = Math.ceil(totalCount / limitNum);
-    const hasNextPage = pageNum < totalPages;
-    const hasPrevPage = pageNum > 1;
 
     res.json({
       sales,
-      pagination: {
-        currentPage: pageNum,
-        totalPages,
-        totalCount,
-        hasNextPage,
-        hasPrevPage,
-        limit: limitNum,
-      }
+      totalCount: sales.length,
     });
   } catch (error) {
     console.error("Failed to fetch sales:", error);
@@ -679,94 +674,93 @@ router.get("/reports/outstanding-balances", authenticateToken, async (req, res) 
   }
 });
 
+// OPTIMIZED: Top Products Report - Eliminates N+1 queries
 router.get("/reports/top-products", authenticateToken, async (req, res) => {
   const { start, end } = req.query;
   const startDate = start ? new Date(start as string) : subDays(new Date(), 7);
   const endDate = end ? new Date(end as string) : new Date();
 
   try {
-    const items = await prisma.saleItem.groupBy({
-      by: ["itemId"],
-      where: {
-        sale: { createdAt: { gte: startDate, lte: endDate } },
-      },
-      _sum: { quantity: true },
-      orderBy: { _sum: { quantity: "desc" } },
-      take: 10,
-    });
+    // Single optimized query with joins
+    const topProducts = await prisma.$queryRaw<Array<{
+      itemId: number;
+      name: string;
+      quantitySold: number;
+    }>>`
+      SELECT 
+        si."itemId",
+        ii.name,
+        SUM(si.quantity) as "quantitySold"
+      FROM "SaleItem" si
+      JOIN "Sale" s ON si."saleId" = s.id
+      JOIN "InventoryItem" ii ON si."itemId" = ii.id
+      WHERE s."createdAt" >= ${startDate} AND s."createdAt" <= ${endDate}
+      GROUP BY si."itemId", ii.name
+      ORDER BY "quantitySold" DESC
+      LIMIT 10
+    `;
 
-    const withNames = await Promise.all(
-      items.map(async (item) => {
-        const itemInfo = await prisma.inventoryItem.findUnique({
-          where: { id: item.itemId },
-        });
-        return {
-          itemId: item.itemId,
-          name: itemInfo?.name,
-          quantitySold: item._sum.quantity,
-        };
-      })
-    );
-    res.json(withNames);
+    res.json(topProducts);
   } catch (error) {
     console.error("Top products error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
 
+// OPTIMIZED: Inventory Usage Report - Eliminates N+1 queries
 router.get("/reports/inventory-usage", authenticateToken, async (req, res) => {
   try {
-    const usage = await prisma.saleItem.groupBy({
-      by: ["itemId"],
-      _sum: { quantity: true },
-    });
+    // Single optimized query with joins
+    const usage = await prisma.$queryRaw<Array<{
+      itemId: number;
+      name: string;
+      totalUsed: number;
+      currentStock: number;
+    }>>`
+      SELECT 
+        ii.id as "itemId",
+        ii.name,
+        COALESCE(SUM(si.quantity), 0) as "totalUsed",
+        ii.quantity as "currentStock"
+      FROM "InventoryItem" ii
+      LEFT JOIN "SaleItem" si ON ii.id = si."itemId"
+      GROUP BY ii.id, ii.name, ii.quantity
+      ORDER BY "totalUsed" DESC
+    `;
 
-    const result = await Promise.all(
-      usage.map(async (entry) => {
-        const item = await prisma.inventoryItem.findUnique({
-          where: { id: entry.itemId },
-        });
-        return {
-          itemId: entry.itemId,
-          name: item?.name,
-          totalUsed: entry._sum.quantity,
-          currentStock: item?.quantity,
-        };
-      })
-    );
-
-    res.json(result);
+    res.json(usage);
   } catch (error) {
     console.error("Inventory usage error:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
 
+// OPTIMIZED: User Performance Report - Eliminates N+1 queries
 router.get("/reports/user-performance", authenticateToken, async (req, res) => {
   try {
-    const userSales = await prisma.sale.groupBy({
-      by: ["userId"],
-      _sum: { totalAmount: true, paidAmount: true },
-      _count: { _all: true },
-    });
+    // Single optimized query with joins
+    const userPerformance = await prisma.$queryRaw<Array<{
+      userId: number;
+      name: string;
+      email: string;
+      totalSales: number;
+      totalPaid: number;
+      saleCount: number;
+    }>>`
+      SELECT 
+        u.id as "userId",
+        u.name,
+        u.email,
+        COALESCE(SUM(s."totalAmount"), 0) as "totalSales",
+        COALESCE(SUM(s."paidAmount"), 0) as "totalPaid",
+        COUNT(s.id) as "saleCount"
+      FROM "User" u
+      LEFT JOIN "Sale" s ON u.id = s."userId"
+      GROUP BY u.id, u.name, u.email
+      ORDER BY "totalSales" DESC
+    `;
 
-    const results = await Promise.all(
-      userSales.map(async (entry) => {
-        const user = entry.userId
-          ? await prisma.user.findUnique({ where: { id: entry.userId } })
-          : null;
-
-        return {
-          userId: entry.userId,
-          name: user?.name || "Unknown",
-          email: user?.email || "N/A",
-          totalSales: entry._sum.totalAmount || 0,
-          totalPaid: entry._sum.paidAmount || 0,
-          saleCount: entry._count._all,
-        };
-      })
-    );
-    res.json(results);
+    res.json(userPerformance);
   } catch (error) {
     console.error("User performance error:", error);
     res.status(500).json({ error: "Server error" });

@@ -2,7 +2,7 @@ import axios from "axios";
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: "http://13.49.240.213:3000",
+  baseURL: "http://localhost:3000",
   timeout: 30000, // Increased from 10000 to 30000 (30 seconds)
   headers: {
     "Content-Type": "application/json",
@@ -118,7 +118,10 @@ export const salesAPI = {
   filter: (params: any) => api.get("/sales/filter", { params }),
   report: (range: "daily" | "weekly" | "monthly" | "yearly") =>
     api.get("/sales/sales/report", { params: { range } }),
-
+  // New optimized endpoints
+  getAllOptimized: (params?: any) => api.get("/sales-optimized/sales", { params }),
+  getByDate: (params?: any) => api.get("/sales-optimized/sales/by-date", { params }),
+  getAllWithoutPagination: (params?: any) => api.get("/sales-optimized/sales/all", { params }),
 };
 
 // Reports API

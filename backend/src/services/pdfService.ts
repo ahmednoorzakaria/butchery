@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import { format, subDays } from 'date-fns';
 import PDFDocument from 'pdfkit';
-
-const prisma = new PrismaClient();
+import prisma from '../lib/prisma';
 
 export class PDFService {
   // Color scheme for modern UI

@@ -3,11 +3,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const client_1 = require("@prisma/client");
 const faker_1 = require("@faker-js/faker");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const date_fns_1 = require("date-fns");
-const prisma = new client_1.PrismaClient();
+const prisma_1 = __importDefault(require("./lib/prisma"));
 // Real butchery inventory items
 const INVENTORY_ITEMS = [
     // Beef
@@ -130,18 +129,18 @@ async function main() {
     console.log('🌱 Starting comprehensive database seeding...');
     // Clear existing data
     console.log('🧹 Clearing existing data...');
-    await prisma.customerTransaction.deleteMany();
-    await prisma.saleItem.deleteMany();
-    await prisma.sale.deleteMany();
-    await prisma.inventoryTransaction.deleteMany();
-    await prisma.inventoryItem.deleteMany();
-    await prisma.customer.deleteMany();
-    await prisma.user.deleteMany();
-    await prisma.expense.deleteMany();
+    await prisma_1.default.customerTransaction.deleteMany();
+    await prisma_1.default.saleItem.deleteMany();
+    await prisma_1.default.sale.deleteMany();
+    await prisma_1.default.inventoryTransaction.deleteMany();
+    await prisma_1.default.inventoryItem.deleteMany();
+    await prisma_1.default.customer.deleteMany();
+    await prisma_1.default.user.deleteMany();
+    await prisma_1.default.expense.deleteMany();
     // Create users Ahmed and Jon
     console.log('👥 Creating users...');
     const hashedPassword = await bcryptjs_1.default.hash('password123', 10);
-    const ahmed = await prisma.user.create({
+    const ahmed = await prisma_1.default.user.create({
         data: {
             email: 'ahmed@butchery.com',
             name: 'Ahmed Hassan',
@@ -150,7 +149,7 @@ async function main() {
             role: 'SALES',
         },
     });
-    const jon = await prisma.user.create({
+    const jon = await prisma_1.default.user.create({
         data: {
             email: 'jon@butchery.com',
             name: 'Jon Smith',
@@ -164,7 +163,7 @@ async function main() {
     console.log('📦 Creating inventory items...');
     const inventoryItems = [];
     for (const itemData of INVENTORY_ITEMS) {
-        const item = await prisma.inventoryItem.create({
+        const item = await prisma_1.default.inventoryItem.create({
             data: {
                 ...itemData,
                 quantity: faker_1.faker.number.int({ min: 20, max: 200 }),
@@ -178,7 +177,7 @@ async function main() {
     console.log('👥 Creating customers...');
     const customers = [];
     for (const name of CUSTOMER_NAMES) {
-        const customer = await prisma.customer.create({
+        const customer = await prisma_1.default.customer.create({
             data: {
                 name,
                 phone: `+254${faker_1.faker.number.int({ min: 700000000, max: 799999999 })}`,
@@ -203,7 +202,7 @@ async function main() {
         const discount = faker_1.faker.number.float({ min: 0, max: baseAmount * 0.15, fractionDigits: 2 });
         const totalAmount = baseAmount;
         const paidAmount = totalAmount - discount;
-        const sale = await prisma.sale.create({
+        const sale = await prisma_1.default.sale.create({
             data: {
                 customerId: customer.id,
                 userId: user.id,
@@ -221,7 +220,7 @@ async function main() {
         for (const item of selectedItems) {
             const quantity = faker_1.faker.number.float({ min: 0.5, max: 5, fractionDigits: 1 });
             const price = item.sellPrice || 0;
-            await prisma.saleItem.create({
+            await prisma_1.default.saleItem.create({
                 data: {
                     saleId: sale.id,
                     itemId: item.id,
@@ -244,7 +243,7 @@ async function main() {
         const stockInCount = faker_1.faker.number.int({ min: 3, max: 8 });
         for (let i = 0; i < stockInCount; i++) {
             const transactionDate = faker_1.faker.date.between({ from: threeMonthsAgo, to: today });
-            await prisma.inventoryTransaction.create({
+            await prisma_1.default.inventoryTransaction.create({
                 data: {
                     itemId: item.id,
                     type: 'STOCK_IN',
@@ -257,7 +256,7 @@ async function main() {
         const stockOutCount = faker_1.faker.number.int({ min: 2, max: 6 });
         for (let i = 0; i < stockOutCount; i++) {
             const transactionDate = faker_1.faker.date.between({ from: threeMonthsAgo, to: today });
-            await prisma.inventoryTransaction.create({
+            await prisma_1.default.inventoryTransaction.create({
                 data: {
                     itemId: item.id,
                     type: 'STOCK_OUT',
@@ -273,7 +272,7 @@ async function main() {
     for (let i = 0; i < 500; i++) {
         const customer = faker_1.faker.helpers.arrayElement(customers);
         const sale = faker_1.faker.helpers.arrayElement(sales);
-        await prisma.customerTransaction.create({
+        await prisma_1.default.customerTransaction.create({
             data: {
                 customerId: customer.id,
                 saleId: sale.id,
@@ -303,7 +302,7 @@ async function main() {
     ];
     for (let i = 0; i < 100; i++) {
         const expenseDate = faker_1.faker.date.between({ from: threeMonthsAgo, to: today });
-        await prisma.expense.create({
+        await prisma_1.default.expense.create({
             data: {
                 amount: faker_1.faker.number.float({ min: 500, max: 50000, fractionDigits: 2 }),
                 reason: faker_1.faker.helpers.arrayElement(expenseReasons),
@@ -331,5 +330,5 @@ main()
     process.exit(1);
 })
     .finally(async () => {
-    await prisma.$disconnect();
+    await prisma_1.default.$disconnect();
 });

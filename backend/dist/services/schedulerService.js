@@ -7,8 +7,7 @@ exports.SchedulerService = void 0;
 const node_cron_1 = __importDefault(require("node-cron"));
 const pdfService_1 = require("./pdfService");
 const emailService_1 = require("./emailService");
-const client_1 = require("@prisma/client");
-const prisma = new client_1.PrismaClient();
+const prisma_1 = __importDefault(require("../lib/prisma"));
 class SchedulerService {
     constructor() {
         this.isRunning = false;
@@ -56,7 +55,7 @@ class SchedulerService {
             // Get debt summary data
             const debtSummary = await this.getDebtSummary();
             // Get all admin users who should receive daily reports
-            const adminUsers = await prisma.user.findMany({
+            const adminUsers = await prisma_1.default.user.findMany({
                 where: {
                     role: 'ADMIN'
                 }
@@ -151,7 +150,7 @@ class SchedulerService {
     // Get debt summary data
     async getDebtSummary() {
         try {
-            const customers = await prisma.customer.findMany({
+            const customers = await prisma_1.default.customer.findMany({
                 include: { transactions: true }
             });
             const debtData = customers.map(customer => {

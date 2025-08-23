@@ -1,13 +1,15 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
-const client_1 = require("@prisma/client");
 const authMiddleware_1 = require("../middleware/authMiddleware");
-const prisma = new client_1.PrismaClient();
+const prisma_1 = __importDefault(require("../lib/prisma"));
 const router = (0, express_1.Router)();
 // Get all items
 router.get("/", authMiddleware_1.authenticateToken, async (req, res) => {
-    const items = await prisma.inventoryItem.findMany();
+    const items = await prisma_1.default.inventoryItem.findMany();
     const inventoryWithAlerts = items.map((item) => ({
         ...item,
         lowStockAlert: item.quantity <= item.lowStockLimit,
@@ -20,7 +22,7 @@ router.post("/", authMiddleware_1.authenticateToken, async (req, res) => {
     if (!name || !category || !quantity || !unit || basePrice == null || sellPrice == null || limitPrice == null) {
         return res.status(400).json({ error: "Missing required fields" });
     }
-    const newItem = await prisma.inventoryItem.create({
+    const newItem = await prisma_1.default.inventoryItem.create({
         data: { name, category, subtype, quantity, unit, basePrice, sellPrice, limitPrice },
     });
     res.status(201).json(newItem);
@@ -30,7 +32,7 @@ router.put("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
     const { id } = req.params;
     const { name, category, subtype, quantity, unit, basePrice, sellPrice, limitPrice } = req.body;
     try {
-        const updated = await prisma.inventoryItem.update({
+        const updated = await prisma_1.default.inventoryItem.update({
             where: { id: parseInt(id) },
             data: {
                 ...(name && { name }),
@@ -53,7 +55,7 @@ router.put("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
 router.delete("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
     const { id } = req.params;
     try {
-        await prisma.inventoryItem.delete({ where: { id: parseInt(id) } });
+        await prisma_1.default.inventoryItem.delete({ where: { id: parseInt(id) } });
         res.json({ message: "Item deleted" });
     }
     catch (error) {
@@ -64,13 +66,13 @@ router.delete("/:id", authMiddleware_1.authenticateToken, async (req, res) => {
 router.post("/:id/stock-in", authMiddleware_1.authenticateToken, async (req, res) => {
     const { quantity } = req.body;
     const itemId = parseInt(req.params.id);
-    const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } });
+    const item = await prisma_1.default.inventoryItem.findUnique({ where: { id: itemId } });
     if (!item)
         return res.status(404).json({ error: "Item not found" });
-    await prisma.inventoryTransaction.create({
+    await prisma_1.default.inventoryTransaction.create({
         data: { itemId, type: "STOCK_IN", quantity },
     });
-    const updated = await prisma.inventoryItem.update({
+    const updated = await prisma_1.default.inventoryItem.update({
         where: { id: itemId },
         data: { quantity: item.quantity + quantity },
     });
@@ -80,15 +82,15 @@ router.post("/:id/stock-in", authMiddleware_1.authenticateToken, async (req, res
 router.post("/:id/stock-out", authMiddleware_1.authenticateToken, async (req, res) => {
     const { quantity } = req.body;
     const itemId = parseInt(req.params.id);
-    const item = await prisma.inventoryItem.findUnique({ where: { id: itemId } });
+    const item = await prisma_1.default.inventoryItem.findUnique({ where: { id: itemId } });
     if (!item)
         return res.status(404).json({ error: "Item not found" });
     if (item.quantity < quantity)
         return res.status(400).json({ error: "Insufficient stock" });
-    await prisma.inventoryTransaction.create({
+    await prisma_1.default.inventoryTransaction.create({
         data: { itemId, type: "STOCK_OUT", quantity },
     });
-    const updated = await prisma.inventoryItem.update({
+    const updated = await prisma_1.default.inventoryItem.update({
         where: { id: itemId },
         data: { quantity: item.quantity - quantity },
     });
@@ -97,7 +99,7 @@ router.post("/:id/stock-out", authMiddleware_1.authenticateToken, async (req, re
 // GET /inventory/:id/transactions
 router.get("/:id/transactions", authMiddleware_1.authenticateToken, async (req, res) => {
     const itemId = parseInt(req.params.id);
-    const transactions = await prisma.inventoryTransaction.findMany({
+    const transactions = await prisma_1.default.inventoryTransaction.findMany({
         where: { itemId },
         orderBy: { createdAt: "desc" },
     });
@@ -111,7 +113,7 @@ router.post("/inventory/:id/increase", authMiddleware_1.authenticateToken, async
         return res.status(400).json({ error: "Quantity must be greater than zero" });
     }
     try {
-        const item = await prisma.inventoryItem.update({
+        const item = await prisma_1.default.inventoryItem.update({
             where: { id: itemId },
             data: {
                 quantity: {
@@ -119,7 +121,7 @@ router.post("/inventory/:id/increase", authMiddleware_1.authenticateToken, async
                 },
             },
         });
-        await prisma.inventoryTransaction.create({
+        await prisma_1.default.inventoryTransaction.create({
             data: {
                 itemId,
                 quantity,
