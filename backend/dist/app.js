@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const morgan_1 = __importDefault(require("morgan"));
 const body_parser_1 = __importDefault(require("body-parser"));
 const cors_1 = __importDefault(require("cors"));
+const compression_1 = __importDefault(require("compression"));
 const auth_1 = __importDefault(require("./routes/auth"));
 const profile_1 = __importDefault(require("./routes/profile"));
 const inventory_1 = __importDefault(require("./routes/inventory"));
@@ -27,6 +28,7 @@ app.use((0, morgan_1.default)('dev'));
 app.use(express_1.default.json());
 app.use(body_parser_1.default.urlencoded({ extended: false }));
 app.use((0, cors_1.default)(corsOptions));
+app.use((0, compression_1.default)());
 app.options('*', (0, cors_1.default)(corsOptions)); // Preflight support
 //routes
 app.use('/auth', auth_1.default);
@@ -34,6 +36,7 @@ app.use('/profile', profile_1.default);
 app.use('/inventory', inventory_1.default);
 app.use('/sales', sales_1.default);
 app.use('/sales-optimized', sales_optimized_1.default);
+app.use('/reports', reports_1.default);
 app.use('/sales/reports', reports_1.default);
 app.use('/daily-reports', dailyReports_1.default);
 app.use('/expenses', expenses_1.default);

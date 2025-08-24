@@ -2,6 +2,7 @@ import express from 'express';
 import logger from 'morgan';
 import bodyParser from 'body-parser';
 import cors from 'cors';
+import compression from 'compression';
 
 import authRoutes from './routes/auth';
 import profileRoutes from './routes/profile';
@@ -27,6 +28,7 @@ app.use(logger('dev'));
 app.use(express.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(cors(corsOptions));
+app.use(compression());
 app.options('*', cors(corsOptions)); // Preflight support
 
 //routes
@@ -35,6 +37,7 @@ app.use('/profile', profileRoutes);
 app.use('/inventory', inventoryRouter);
 app.use('/sales', salesRouter);
 app.use('/sales-optimized', salesOptimizedRouter);
+app.use('/reports', reportsRouter);
 app.use('/sales/reports', reportsRouter);
 app.use('/daily-reports', dailyReportsRouter);
 app.use('/expenses', expensesRouter);

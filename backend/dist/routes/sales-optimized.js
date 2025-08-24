@@ -10,11 +10,11 @@ const prisma_1 = __importDefault(require("../lib/prisma"));
 const router = (0, express_1.Router)();
 // OPTIMIZED: Sales Filter & Summary with Advanced Search and Date Filtering
 router.get("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
-    let { start, end, search, page = 1, limit = 1000, filterType = "custom" // custom, today, week, month, year
+    let { start, end, search, page = 1, limit = "all", filterType = "custom" // custom, today, week, month, year
      } = req.query;
     const pageNum = parseInt(page) || 1;
-    const limitNum = Math.min(parseInt(limit) || 1000, 1000); // Increased limit
-    const skip = (pageNum - 1) * limitNum;
+    const limitNum = limit === "all" ? undefined : Math.min(parseInt(limit) || 1000, 1000);
+    const skip = limitNum ? (pageNum - 1) * limitNum : undefined;
     try {
         // Handle different filter types
         let startDate;
@@ -38,7 +38,6 @@ router.get("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
                 endDate = (0, date_fns_1.endOfYear)(now);
                 break;
             default:
-                // Custom date range
                 if (start && (0, date_fns_1.isValid)((0, date_fns_1.parseISO)(start))) {
                     startDate = (0, date_fns_1.parseISO)(start);
                 }
@@ -52,79 +51,37 @@ router.get("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
                     endDate = (0, date_fns_1.endOfDay)(now);
                 }
         }
-        // Build where clause for search functionality
-        const whereClause = {
-            createdAt: { gte: startDate, lte: endDate },
-        };
-        // Enhanced search functionality
+        const whereClause = { createdAt: { gte: startDate, lte: endDate } };
         if (search && search.trim()) {
             const searchTerm = search.trim();
-            // Check if search is a number (sale ID)
             const saleId = parseInt(searchTerm);
             if (!isNaN(saleId)) {
-                // If it's a number, search for exact sale ID first, then customer info
                 whereClause.OR = [
-                    { id: saleId }, // Exact sale ID match
-                    {
-                        customer: {
-                            OR: [
-                                { name: { contains: searchTerm, mode: 'insensitive' } },
-                                { phone: { contains: searchTerm, mode: 'insensitive' } }
-                            ]
-                        }
-                    }
+                    { id: saleId },
+                    { customer: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
+                    { customer: { is: { phone: { contains: searchTerm, mode: 'insensitive' } } } },
                 ];
             }
             else {
-                // If it's text, search by customer name or phone only
                 whereClause.OR = [
-                    { customer: { name: { contains: searchTerm, mode: 'insensitive' } } },
-                    { customer: { phone: { contains: searchTerm, mode: 'insensitive' } } },
+                    { customer: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
+                    { customer: { is: { phone: { contains: searchTerm, mode: 'insensitive' } } } },
                 ];
             }
         }
-        // Get total count for pagination
-        const totalCount = await prisma_1.default.sale.count({
-            where: whereClause,
-        });
-        // Get sales with pagination
         const sales = await prisma_1.default.sale.findMany({
             where: whereClause,
             include: {
-                customer: {
-                    select: {
-                        id: true,
-                        name: true,
-                        phone: true,
-                    }
-                },
-                items: {
-                    include: {
-                        item: {
-                            select: {
-                                id: true,
-                                name: true,
-                                category: true,
-                                unit: true,
-                            }
-                        }
-                    }
-                },
-                user: {
-                    select: {
-                        id: true,
-                        name: true
-                    }
-                },
+                customer: { select: { id: true, name: true, phone: true } },
+                items: { include: { item: { select: { id: true, name: true, category: true, unit: true } } } },
+                user: { select: { id: true, name: true } },
             },
             orderBy: { createdAt: "desc" },
             skip,
             take: limitNum,
         });
-        const totalPages = Math.ceil(totalCount / limitNum);
-        const hasNextPage = pageNum < totalPages;
-        const hasPrevPage = pageNum > 1;
-        // Calculate summary statistics
+        const totalCount = await prisma_1.default.sale.count({ where: whereClause });
+        const totalPages = limitNum ? Math.ceil(totalCount / limitNum) : 1;
         const summary = {
             totalSales: sales.length,
             totalAmount: sales.reduce((sum, sale) => sum + sale.totalAmount, 0),
@@ -135,14 +92,14 @@ router.get("/sales", authMiddleware_1.authenticateToken, async (req, res) => {
         };
         res.json({
             sales,
-            pagination: {
+            pagination: limitNum ? {
                 currentPage: pageNum,
                 totalPages,
                 totalCount,
-                hasNextPage,
-                hasPrevPage,
+                hasNextPage: pageNum < totalPages,
+                hasPrevPage: pageNum > 1,
                 limit: limitNum,
-            },
+            } : null,
             summary,
             filterInfo: {
                 startDate: startDate.toISOString(),

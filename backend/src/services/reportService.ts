@@ -1,0 +1,223 @@
+import prisma from "../lib/prisma";
+import { subDays, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
+
+export async function getOutstandingBalances() {
+  const customers = await prisma.customer.findMany({ include: { transactions: true } });
+  const balances = customers.map((c) => {
+    const balance = c.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+    return { customerId: c.id, name: c.name, balance };
+  });
+  return balances.filter((c) => c.balance < 0);
+}
+
+export async function getTopProducts(start?: Date, end?: Date) {
+  const startDate = start ?? subDays(new Date(), 7);
+  const endDate = end ?? new Date();
+  const rows = await prisma.$queryRaw<Array<{ itemId: number; name: string; quantitySold: number }>>`
+    SELECT 
+      si."itemId",
+      ii.name,
+      SUM(si.quantity) as "quantitySold"
+    FROM "SaleItem" si
+    JOIN "Sale" s ON si."saleId" = s.id
+    JOIN "InventoryItem" ii ON si."itemId" = ii.id
+    WHERE s."createdAt" >= ${startDate} AND s."createdAt" <= ${endDate}
+    GROUP BY si."itemId", ii.name
+    ORDER BY "quantitySold" DESC
+    LIMIT 10
+  `;
+  return rows;
+}
+
+export async function getInventoryUsage() {
+  const rows = await prisma.$queryRaw<Array<{ itemId: number; name: string; totalUsed: number; currentStock: number }>>`
+    SELECT 
+      ii.id as "itemId",
+      ii.name,
+      COALESCE(SUM(si.quantity), 0) as "totalUsed",
+      ii.quantity as "currentStock"
+    FROM "InventoryItem" ii
+    LEFT JOIN "SaleItem" si ON ii.id = si."itemId"
+    GROUP BY ii.id, ii.name, ii.quantity
+    ORDER BY "totalUsed" DESC
+  `;
+  return rows;
+}
+
+export async function getUserPerformance() {
+  const rows = await prisma.$queryRaw<Array<{ userId: number; name: string; email: string; totalSales: number; totalPaid: number; saleCount: number }>>`
+    SELECT 
+      u.id as "userId",
+      COALESCE(u.name, 'Unknown') as name,
+      COALESCE(u.email, 'N/A') as email,
+      COALESCE(SUM(s."totalAmount"), 0) as "totalSales",
+      COALESCE(SUM(s."paidAmount"), 0) as "totalPaid",
+      COUNT(s.id) as "saleCount"
+    FROM "User" u
+    LEFT JOIN "Sale" s ON u.id = s."userId"
+    GROUP BY u.id, u.name, u.email
+    ORDER BY "totalSales" DESC
+  `;
+  return rows;
+}
+
+export function resolvePeriodRange(period?: string, start?: string, end?: string) {
+  if (start && end) {
+    return { startDate: new Date(start), endDate: new Date(end) };
+  }
+  const now = new Date();
+  switch (period) {
+    case "day":
+      return { startDate: startOfDay(now), endDate: endOfDay(now) };
+    case "week":
+      return { startDate: startOfWeek(now), endDate: endOfWeek(now) };
+    case "month":
+      return { startDate: startOfMonth(now), endDate: endOfMonth(now) };
+    case "year":
+      return { startDate: startOfYear(now), endDate: endOfYear(now) };
+    default:
+      return { startDate: subDays(now, 7), endDate: now };
+  }
+}
+
+export async function getSalesByPeriod(period?: string, start?: string, end?: string) {
+  const { startDate, endDate } = resolvePeriodRange(period, start, end);
+
+  const sales = await prisma.sale.findMany({
+    where: { createdAt: { gte: startDate, lte: endDate } },
+    include: {
+      customer: true,
+      items: { include: { item: true } },
+    },
+  });
+
+  const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalPaid = sales.reduce((sum, s) => sum + s.paidAmount, 0);
+  const totalDiscount = sales.reduce((sum, s) => sum + s.discount, 0);
+  const outstandingAmount = totalSales - totalPaid;
+
+  const numberOfSales = sales.length;
+
+  let totalCost = 0;
+  const itemSales: Record<string, { quantity: number; revenue: number; profit: number; cost: number }> = {};
+  for (const sale of sales) {
+    for (const si of sale.items) {
+      const itemCost = (si.item as any).basePrice || si.price * 0.7;
+      totalCost += si.quantity * itemCost;
+      if (!itemSales[si.item.name]) {
+        itemSales[si.item.name] = { quantity: 0, revenue: 0, profit: 0, cost: 0 };
+      }
+      itemSales[si.item.name].quantity += si.quantity;
+      itemSales[si.item.name].revenue += si.quantity * si.price;
+      itemSales[si.item.name].cost += si.quantity * itemCost;
+      itemSales[si.item.name].profit += si.quantity * (si.price - itemCost);
+    }
+  }
+
+  const netProfit = totalSales - totalCost;
+  const profitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+  const collectionRate = totalSales > 0 ? (totalPaid / totalSales) * 100 : 0;
+  const averageOrderValue = numberOfSales > 0 ? totalSales / numberOfSales : 0;
+
+  const salesByHour = Array.from({ length: 24 }, (_, hour) => {
+    const hourSales = sales.filter((sale) => new Date(sale.createdAt).getHours() === hour);
+    return { hour: `${hour}:00`, sales: hourSales.reduce((sum, s) => sum + s.totalAmount, 0) };
+  });
+
+  const daysOfWeek = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const salesByDay = daysOfWeek.map((day, index) => {
+    const daySales = sales.filter((sale) => new Date(sale.createdAt).getDay() === index);
+    return { day, sales: daySales.reduce((sum, s) => sum + s.totalAmount, 0) };
+  });
+
+  const topItems = Object.entries(itemSales)
+    .map(([name, data]) => ({ name, quantity: data.quantity, revenue: data.revenue, cost: data.cost, profit: data.profit }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 10);
+
+  const recentSales = sales
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, 10)
+    .map((sale) => ({
+      id: sale.id,
+      customer: sale.customer?.name,
+      amount: sale.totalAmount,
+      paymentType: sale.paymentType,
+      date: sale.createdAt,
+      items: sale.items.map((item) => ({ quantity: item.quantity, name: item.item.name })),
+    }));
+
+  return {
+    summary: {
+      totalSales,
+      totalPaid,
+      totalDiscount,
+      outstandingAmount,
+      numberOfSales,
+      netProfit,
+      profitMargin,
+      collectionRate,
+      averageOrderValue,
+    },
+    salesByHour,
+    salesByDay,
+    topItems,
+    recentSales,
+  };
+}
+
+export async function getProfitLoss(start?: string, end?: string) {
+  const startDate = start ? new Date(start) : subDays(new Date(), 7);
+  const endDate = end ? new Date(end) : new Date();
+
+  const sales = await prisma.sale.findMany({
+    where: { createdAt: { gte: startDate, lte: endDate } },
+    include: { items: { include: { item: true } } },
+  });
+
+  let totalRevenue = 0;
+  let totalCost = 0;
+  const itemProfitability: Record<string, {
+    name: string;
+    category: string;
+    totalQuantity: number;
+    totalRevenue: number;
+    totalCost: number;
+    totalProfit: number;
+    profitMargin?: number;
+  }> = {};
+
+  for (const sale of sales) {
+    for (const it of sale.items) {
+      const revenue = it.quantity * it.price;
+      const cost = it.quantity * ((it.item as any).basePrice || it.price * 0.7);
+      const profit = revenue - cost;
+      totalRevenue += revenue;
+      totalCost += cost;
+      if (!itemProfitability[it.item.name]) {
+        itemProfitability[it.item.name] = { name: it.item.name, category: (it.item as any).category || "General", totalQuantity: 0, totalRevenue: 0, totalCost: 0, totalProfit: 0 };
+      }
+      itemProfitability[it.item.name].totalQuantity += it.quantity;
+      itemProfitability[it.item.name].totalRevenue += revenue;
+      itemProfitability[it.item.name].totalCost += cost;
+      itemProfitability[it.item.name].totalProfit += profit;
+    }
+  }
+
+  Object.values(itemProfitability).forEach((item) => {
+    item.profitMargin = item.totalRevenue > 0 ? (item.totalProfit / item.totalRevenue) * 100 : 0;
+  });
+
+  const netProfit = totalRevenue - totalCost;
+  const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+
+  const topPerformers = Object.values(itemProfitability)
+    .sort((a, b) => b.totalProfit - a.totalProfit)
+    .slice(0, 10);
+
+  return {
+    summary: { totalRevenue, totalCost, totalProfit: netProfit, profitMargin },
+    itemProfitability: Object.values(itemProfitability),
+    topPerformers,
+  };
+}
