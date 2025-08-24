@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { PDFService } from './pdfService';
 import { EmailService } from './emailService';
 import prisma from '../lib/prisma';
+import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 
 export class SchedulerService {
   private pdfService: PDFService;
@@ -60,6 +61,26 @@ export class SchedulerService {
       // Get summaries
       const debtSummary = await this.getDebtSummary();
       const { kpi, topItems } = await this.computeDailyKPIs(date);
+
+      // Compute week-to-date and month-to-date KPIs
+      const weekStart = startOfWeek(date, { weekStartsOn: 1 });
+      const weekEnd = endOfWeek(date, { weekStartsOn: 1 });
+      const monthStart = startOfMonth(date);
+      const monthEnd = endOfMonth(date);
+
+      const weekly = await this.computeKPIsForRange(weekStart, weekEnd);
+      const monthly = await this.computeKPIsForRange(monthStart, monthEnd);
+
+      // Inventory summary (current snapshot)
+      const inventorySummary = await this.getInventorySummary();
+
+      // Expenses totals
+      const dailyExpensesTotal = await this.getExpensesTotal(
+        new Date(new Date(date).setHours(0,0,0,0)),
+        new Date(new Date(date).setHours(23,59,59,999))
+      );
+      const weeklyExpensesTotal = await this.getExpensesTotal(weekStart, weekEnd);
+      const monthlyExpensesTotal = await this.getExpensesTotal(monthStart, monthEnd);
       
       // Get all admin users who should receive daily reports
       const adminUsers = await prisma.user.findMany({
@@ -75,7 +96,24 @@ export class SchedulerService {
 
       // Send report to each admin user
       const emailPromises = adminUsers.map(user => 
-        this.emailService.sendDailyReport(user.email, pdfBuffer, date, debtSummary || undefined, kpi, topItems)
+        this.emailService.sendDailyReport(
+          user.email,
+          pdfBuffer,
+          date,
+          debtSummary || undefined,
+          kpi,
+          topItems,
+          {
+            weekly: weekly.kpi,
+            monthly: monthly.kpi,
+            inventory: inventorySummary,
+            expenses: {
+              dailyTotal: dailyExpensesTotal,
+              weeklyTotal: weeklyExpensesTotal,
+              monthlyTotal: monthlyExpensesTotal,
+            }
+          }
+        )
       );
 
       const results = await Promise.allSettled(emailPromises);
@@ -258,11 +296,69 @@ export class SchedulerService {
 
       return {
         kpi: { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit },
-        topItems,
+        topItems
       };
     } catch (error) {
       console.error('Error computing daily KPIs:', error);
       return { kpi: { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 }, topItems: [] };
+    }
+  }
+
+  private async computeKPIsForRange(start: Date, end: Date) {
+    try {
+      const sales = await prisma.sale.findMany({
+        where: { createdAt: { gte: new Date(start), lte: new Date(end) } },
+        include: { items: { include: { item: true } } }
+      });
+
+      const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
+      const totalPaid = sales.reduce((sum, s) => sum + s.paidAmount, 0);
+      const outstandingAmount = totalSales - totalPaid;
+      const numberOfSales = sales.length;
+
+      let totalCost = 0;
+      for (const sale of sales) {
+        for (const it of sale.items) {
+          const itemCost = (it.item as any).basePrice || it.price * 0.7;
+          totalCost += it.quantity * itemCost;
+        }
+      }
+
+      const netProfit = totalSales - totalCost;
+      const profitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+      const collectionRate = totalSales > 0 ? (totalPaid / totalSales) * 100 : 0;
+      const averageOrderValue = numberOfSales > 0 ? totalSales / numberOfSales : 0;
+
+      return { kpi: { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit } };
+    } catch (error) {
+      console.error('Error computing KPIs for range:', error);
+      return { kpi: { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 } };
+    }
+  }
+
+  private async getInventorySummary() {
+    try {
+      const items = await prisma.inventoryItem.findMany();
+      const totalItems = items.length;
+      const totalValue = items.reduce((sum, it) => sum + ((it.sellPrice || it.basePrice || 0) * (it.quantity || 0)), 0);
+      const lowStockItems = items.filter(it => (it.quantity || 0) <= (it.lowStockLimit || 10)).length;
+      const outOfStock = items.filter(it => (it.quantity || 0) === 0).length;
+      return { totalItems, totalValue, lowStockItems, outOfStock };
+    } catch (error) {
+      console.error('Error fetching inventory summary:', error);
+      return { totalItems: 0, totalValue: 0, lowStockItems: 0, outOfStock: 0 };
+    }
+  }
+
+  private async getExpensesTotal(start: Date, end: Date) {
+    try {
+      const expenses = await prisma.expense.findMany({
+        where: { date: { gte: new Date(start), lte: new Date(end) } }
+      });
+      return expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    } catch (error) {
+      console.error('Error fetching expenses total:', error);
+      return 0;
     }
   }
 }

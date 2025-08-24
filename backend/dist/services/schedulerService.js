@@ -8,6 +8,7 @@ const node_cron_1 = __importDefault(require("node-cron"));
 const pdfService_1 = require("./pdfService");
 const emailService_1 = require("./emailService");
 const prisma_1 = __importDefault(require("../lib/prisma"));
+const date_fns_1 = require("date-fns");
 class SchedulerService {
     constructor() {
         this.isRunning = false;
@@ -55,6 +56,19 @@ class SchedulerService {
             // Get summaries
             const debtSummary = await this.getDebtSummary();
             const { kpi, topItems } = await this.computeDailyKPIs(date);
+            // Compute week-to-date and month-to-date KPIs
+            const weekStart = (0, date_fns_1.startOfWeek)(date, { weekStartsOn: 1 });
+            const weekEnd = (0, date_fns_1.endOfWeek)(date, { weekStartsOn: 1 });
+            const monthStart = (0, date_fns_1.startOfMonth)(date);
+            const monthEnd = (0, date_fns_1.endOfMonth)(date);
+            const weekly = await this.computeKPIsForRange(weekStart, weekEnd);
+            const monthly = await this.computeKPIsForRange(monthStart, monthEnd);
+            // Inventory summary (current snapshot)
+            const inventorySummary = await this.getInventorySummary();
+            // Expenses totals
+            const dailyExpensesTotal = await this.getExpensesTotal(new Date(new Date(date).setHours(0, 0, 0, 0)), new Date(new Date(date).setHours(23, 59, 59, 999)));
+            const weeklyExpensesTotal = await this.getExpensesTotal(weekStart, weekEnd);
+            const monthlyExpensesTotal = await this.getExpensesTotal(monthStart, monthEnd);
             // Get all admin users who should receive daily reports
             const adminUsers = await prisma_1.default.user.findMany({
                 where: {
@@ -66,7 +80,16 @@ class SchedulerService {
                 return;
             }
             // Send report to each admin user
-            const emailPromises = adminUsers.map(user => this.emailService.sendDailyReport(user.email, pdfBuffer, date, debtSummary || undefined, kpi, topItems));
+            const emailPromises = adminUsers.map(user => this.emailService.sendDailyReport(user.email, pdfBuffer, date, debtSummary || undefined, kpi, topItems, {
+                weekly: weekly.kpi,
+                monthly: monthly.kpi,
+                inventory: inventorySummary,
+                expenses: {
+                    dailyTotal: dailyExpensesTotal,
+                    weeklyTotal: weeklyExpensesTotal,
+                    monthlyTotal: monthlyExpensesTotal,
+                }
+            }));
             const results = await Promise.allSettled(emailPromises);
             let successCount = 0;
             let failureCount = 0;
@@ -222,12 +245,66 @@ class SchedulerService {
                 .slice(0, 10);
             return {
                 kpi: { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit },
-                topItems,
+                topItems
             };
         }
         catch (error) {
             console.error('Error computing daily KPIs:', error);
             return { kpi: { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 }, topItems: [] };
+        }
+    }
+    async computeKPIsForRange(start, end) {
+        try {
+            const sales = await prisma_1.default.sale.findMany({
+                where: { createdAt: { gte: new Date(start), lte: new Date(end) } },
+                include: { items: { include: { item: true } } }
+            });
+            const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
+            const totalPaid = sales.reduce((sum, s) => sum + s.paidAmount, 0);
+            const outstandingAmount = totalSales - totalPaid;
+            const numberOfSales = sales.length;
+            let totalCost = 0;
+            for (const sale of sales) {
+                for (const it of sale.items) {
+                    const itemCost = it.item.basePrice || it.price * 0.7;
+                    totalCost += it.quantity * itemCost;
+                }
+            }
+            const netProfit = totalSales - totalCost;
+            const profitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+            const collectionRate = totalSales > 0 ? (totalPaid / totalSales) * 100 : 0;
+            const averageOrderValue = numberOfSales > 0 ? totalSales / numberOfSales : 0;
+            return { kpi: { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit } };
+        }
+        catch (error) {
+            console.error('Error computing KPIs for range:', error);
+            return { kpi: { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 } };
+        }
+    }
+    async getInventorySummary() {
+        try {
+            const items = await prisma_1.default.inventoryItem.findMany();
+            const totalItems = items.length;
+            const totalValue = items.reduce((sum, it) => sum + ((it.sellPrice || it.basePrice || 0) * (it.quantity || 0)), 0);
+            const lowStockItems = items.filter(it => (it.quantity || 0) <= (it.lowStockLimit || 10)).length;
+            const outOfStock = items.filter(it => (it.quantity || 0) === 0).length;
+            return { totalItems, totalValue, lowStockItems, outOfStock };
+        }
+        catch (error) {
+            console.error('Error fetching inventory summary:', error);
+            return { totalItems: 0, totalValue: 0, lowStockItems: 0, outOfStock: 0 };
+        }
+    }
+    async getExpensesTotal(start, end) {
+        try {
+            const expenses = await prisma_1.default.expense.findMany({
+                where: { date: { gte: new Date(start), lte: new Date(end) } }
+            });
+            return expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+        }
+        catch (error) {
+            console.error('Error fetching expenses total:', error);
+            return 0;
         }
     }
 }

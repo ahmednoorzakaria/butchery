@@ -72,6 +72,7 @@ export class PDFService {
     const inventoryData = await this.getInventoryData();
     const cashFlowData = await this.getCashFlowData(startDate, endDate);
     const customerData = await this.getCustomerData(startDate, endDate);
+    const expensesData = await this.getExpensesData(startDate, endDate);
 
     // Modern Header with gradient-like effect
     this.drawModernHeader(doc, date);
@@ -85,8 +86,8 @@ export class PDFService {
     // Add page break for next section
     doc.addPage();
     
-    // Financial Analysis Section
-    this.drawFinancialAnalysis(doc, profitLossData, cashFlowData);
+    // Financial Analysis Section (now includes expenses)
+    this.drawFinancialAnalysis(doc, profitLossData, cashFlowData, expensesData);
     
     // Inventory Insights Section
     this.drawInventoryInsights(doc, inventoryData);
@@ -230,7 +231,7 @@ export class PDFService {
     }
   }
 
-  private drawFinancialAnalysis(doc: any, profitLossData: any, cashFlowData: any) {
+  private drawFinancialAnalysis(doc: any, profitLossData: any, cashFlowData: any, expensesData?: any) {
     // Section header
     this.drawSectionHeader(doc, '💰 Financial Analysis', 'Profit & Loss and Cash Flow insights');
     
@@ -245,28 +246,26 @@ export class PDFService {
     this.drawModernMetricsGrid(doc, profitLossMetrics);
     doc.moveDown(1);
 
-    // Top Performing Items
-    if (profitLossData.topPerformers && profitLossData.topPerformers.length > 0) {
+    // Expenses summary
+    if (expensesData) {
       doc.fontSize(16)
          .font('Helvetica-Bold')
          .fill(this.colors.dark)
-         .text('⭐ Top Performing Items');
-      
+         .text('💸 Expenses Summary');
       doc.moveDown(0.5);
-      
-      const topPerformersData = profitLossData.topPerformers.slice(0, 8).map((item: any, index: number) => [
-        `${index + 1}`,
-        item.name || 'Unknown Item',
-        item.category || 'General',
-        item.totalQuantity?.toFixed(2) || '0',
-        `KSH ${item.totalRevenue?.toLocaleString() || '0'}`,
-        `KSH ${item.totalProfit?.toLocaleString() || '0'}`,
-        `${item.profitMargin?.toFixed(1) || '0'}%`
-      ]);
-      
-      const topPerformersHeaders = ['Rank', 'Item', 'Category', 'Quantity', 'Revenue', 'Profit', 'Margin'];
-      this.drawModernDataTable(doc, [topPerformersHeaders, ...topPerformersData]);
-      doc.moveDown(1);
+
+      const expenseMetrics = [
+        ['Total Expenses', `KSH ${expensesData.summary?.totalAmount?.toLocaleString() || '0'}`, this.colors.danger],
+        ['Transactions', `${expensesData.summary?.count || '0'}`, this.colors.info]
+      ];
+      this.drawModernMetricsGrid(doc, expenseMetrics);
+      doc.moveDown(0.5);
+
+      if (expensesData.topCategories?.length) {
+        const expRows = expensesData.topCategories.map((c: any) => [c.category, `KSH ${c.amount.toLocaleString()}`]);
+        this.drawModernDataTable(doc, [['Category', 'Amount'], ...expRows]);
+        doc.moveDown(1);
+      }
     }
 
     // Cash Flow metrics
@@ -835,11 +834,21 @@ export class PDFService {
         },
       });
 
+      // Include expenses as outflows for the cash flow statement
+      const expenses = await prisma.expense.findMany({
+        where: {
+          date: {
+            gte: new Date(startDate),
+            lte: new Date(endDate),
+          },
+        },
+      });
+
       const totalInflow = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
-      const totalOutflow = 0; // You can add expense data here if available
+      const totalOutflow = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
       const netCashFlow = totalInflow - totalOutflow;
-      const collectionRate = sales.reduce((sum, sale) => sum + sale.paidAmount, 0) / 
-                           sales.reduce((sum, sale) => sum + sale.totalAmount, 0) * 100 || 0;
+      const totalSalesAmount = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+      const collectionRate = totalSalesAmount > 0 ? (totalInflow / totalSalesAmount) * 100 : 0;
 
       return {
         summary: {
@@ -899,8 +908,36 @@ export class PDFService {
      }
    }
 
+  private async getExpensesData(startDate: string, endDate: string) {
+    try {
+      const expenses = await prisma.expense.findMany({
+        where: {
+          date: {
+            gte: new Date(startDate),
+            lte: new Date(endDate),
+          },
+        },
+        orderBy: { date: 'desc' }
+      });
 
+      const totalAmount = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+      const byCategory: Record<string, number> = {};
+      expenses.forEach(e => {
+        const cat = e.category || 'General';
+        byCategory[cat] = (byCategory[cat] || 0) + (e.amount || 0);
+      });
 
+      const topCategories = Object.entries(byCategory)
+        .map(([category, amount]) => ({ category, amount }))
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 6);
+
+      return { summary: { totalAmount, count: expenses.length }, topCategories, recent: expenses.slice(0, 8) };
+    } catch (error) {
+      console.error('Error fetching expenses data:', error);
+      return { summary: {}, topCategories: [], recent: [] };
+    }
+  }
 
 
   private async generateFallbackPDF(date: Date): Promise<Buffer> {
