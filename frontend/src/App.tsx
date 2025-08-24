@@ -3,20 +3,23 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Index from "./pages/Index";
-import Dashboard from "./pages/Dashboard";
-import InventoryList from "./pages/InventoryList";
-import Reports from "./pages/Reports";
-import DailyReports from "./pages/DailyReports";
-import SalesList from "./pages/SalesList";
-import SaleCreation from "./pages/SaleCreation";
-import CustomersList from "./pages/CustomersList";
-import Expenses from "./pages/Expenses";
-import NotFound from "./pages/NotFound";
-import Login from "./pages/Login";
+import { Suspense, lazy } from "react";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import ProtectedRoute from "./components/ProtectedRoute.tsx";
-import Account from "./pages/Account";
-import UnauthorizedRedirect from "./pages/UnauthorizedRedirect";
+
+const Index = lazy(() => import("./pages/Index"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const InventoryList = lazy(() => import("./pages/InventoryList"));
+const Reports = lazy(() => import("./pages/Reports"));
+const DailyReports = lazy(() => import("./pages/DailyReports"));
+const SalesList = lazy(() => import("./pages/SalesList"));
+const SaleCreation = lazy(() => import("./pages/SaleCreation"));
+const CustomersList = lazy(() => import("./pages/CustomersList"));
+const Expenses = lazy(() => import("./pages/Expenses"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Login = lazy(() => import("./pages/Login"));
+const Account = lazy(() => import("./pages/Account"));
+const UnauthorizedRedirect = lazy(() => import("./pages/UnauthorizedRedirect"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +48,7 @@ const App = () => (
           v7_relativeSplatPath: true,
         }}
       >
+        <Suspense fallback={<div className="flex items-center justify-center py-16"><LoadingSpinner /></div>}>
         <Routes>
           <Route path="/login" element={<Login />} />
 
@@ -131,6 +135,7 @@ const App = () => (
           <Route path="*" element={<NotFound />} />
           <Route path="/unauthorized" element={<UnauthorizedRedirect />} />
         </Routes>
+        </Suspense>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
