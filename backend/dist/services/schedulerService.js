@@ -52,8 +52,9 @@ class SchedulerService {
             console.log('Generating daily report PDF...');
             const pdfBuffer = await this.pdfService.generateDailyReport(date);
             console.log('PDF generated successfully, sending emails...');
-            // Get debt summary data
+            // Get summaries
             const debtSummary = await this.getDebtSummary();
+            const { kpi, topItems } = await this.computeDailyKPIs(date);
             // Get all admin users who should receive daily reports
             const adminUsers = await prisma_1.default.user.findMany({
                 where: {
@@ -65,7 +66,7 @@ class SchedulerService {
                 return;
             }
             // Send report to each admin user
-            const emailPromises = adminUsers.map(user => this.emailService.sendDailyReport(user.email, pdfBuffer, date, debtSummary || undefined));
+            const emailPromises = adminUsers.map(user => this.emailService.sendDailyReport(user.email, pdfBuffer, date, debtSummary || undefined, kpi, topItems));
             const results = await Promise.allSettled(emailPromises);
             let successCount = 0;
             let failureCount = 0;
@@ -94,9 +95,10 @@ class SchedulerService {
         try {
             const pdfBuffer = await this.pdfService.generateDailyReport();
             const debtSummary = await this.getDebtSummary();
+            const { kpi, topItems } = await this.computeDailyKPIs(new Date());
             if (recipientEmail) {
                 // Send to specific email for testing
-                const success = await this.emailService.sendDailyReport(recipientEmail, pdfBuffer, new Date(), debtSummary || undefined);
+                const success = await this.emailService.sendDailyReport(recipientEmail, pdfBuffer, new Date(), debtSummary || undefined, kpi, topItems);
                 if (success) {
                     console.log(`Test report sent successfully to ${recipientEmail}`);
                 }
@@ -175,6 +177,57 @@ class SchedulerService {
         catch (error) {
             console.error('Error fetching debt summary:', error);
             return null;
+        }
+    }
+    async getDailyKPIs(date) {
+        return this.computeDailyKPIs(date);
+    }
+    async computeDailyKPIs(date) {
+        try {
+            const start = new Date(date);
+            start.setDate(start.getDate() - 1);
+            start.setHours(0, 0, 0, 0);
+            const end = new Date(date);
+            end.setHours(23, 59, 59, 999);
+            const sales = await prisma_1.default.sale.findMany({
+                where: { createdAt: { gte: start, lte: end } },
+                include: { items: { include: { item: true } } }
+            });
+            const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
+            const totalPaid = sales.reduce((sum, s) => sum + s.paidAmount, 0);
+            const outstandingAmount = totalSales - totalPaid;
+            const numberOfSales = sales.length;
+            let totalCost = 0;
+            const itemAgg = {};
+            for (const sale of sales) {
+                for (const it of sale.items) {
+                    const itemCost = it.item.basePrice || it.price * 0.7;
+                    totalCost += it.quantity * itemCost;
+                    if (!itemAgg[it.item.name]) {
+                        itemAgg[it.item.name] = { quantity: 0, revenue: 0, profit: 0, cost: 0 };
+                    }
+                    itemAgg[it.item.name].quantity += it.quantity;
+                    itemAgg[it.item.name].revenue += it.quantity * it.price;
+                    itemAgg[it.item.name].cost += it.quantity * itemCost;
+                    itemAgg[it.item.name].profit += it.quantity * (it.price - itemCost);
+                }
+            }
+            const netProfit = totalSales - totalCost;
+            const profitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+            const collectionRate = totalSales > 0 ? (totalPaid / totalSales) * 100 : 0;
+            const averageOrderValue = numberOfSales > 0 ? totalSales / numberOfSales : 0;
+            const topItems = Object.entries(itemAgg)
+                .map(([name, data]) => ({ name, quantity: data.quantity, revenue: data.revenue, profit: data.profit }))
+                .sort((a, b) => b.revenue - a.revenue)
+                .slice(0, 10);
+            return {
+                kpi: { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit },
+                topItems,
+            };
+        }
+        catch (error) {
+            console.error('Error computing daily KPIs:', error);
+            return { kpi: { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 }, topItems: [] };
         }
     }
 }

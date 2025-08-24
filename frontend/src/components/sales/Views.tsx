@@ -224,35 +224,36 @@ export function Views({
 			{/* Summary Cards (from backend summary) */}
 			<div className="grid grid-cols-1 md:grid-cols-4 gap-4">
 				<Card>
-					<CardContent className="p-4">
-						<div className="flex items-center space-x-2">
-							<Receipt className="h-5 w-5 text-primary" />
+					<CardContent className="p-4 h-full">
+						<div className="flex items-center justify-between">
 							<div>
 								<p className="text-sm text-muted-foreground">Total Amount</p>
-								<p className="text-2xl font-bold">
-									KSH {(summary?.totalAmount || 0).toLocaleString()}
-								</p>
+								<p className="text-2xl font-bold">KSH {(summary?.totalAmount || 0).toLocaleString()}</p>
+							</div>
+							<div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+								<Receipt className="h-5 w-5 text-primary" />
 							</div>
 						</div>
 					</CardContent>
 				</Card>
 
 				<Card>
-					<CardContent className="p-4">
-						<div className="flex items-center space-x-2">
-							<Receipt className="h-5 w-5 text-success" />
+					<CardContent className="p-4 h-full">
+						<div className="flex items-center justify-between">
 							<div>
 								<p className="text-sm text-muted-foreground">Transactions</p>
 								<p className="text-2xl font-bold">{summary?.totalSales || sales.length || 0}</p>
 							</div>
+							<div className="h-10 w-10 rounded-lg bg-success/10 flex items-center justify-center">
+								<Receipt className="h-5 w-5 text-success" />
+							</div>
 						</div>
 					</CardContent>
 				</Card>
 
 				<Card>
-					<CardContent className="p-4">
-						<div className="flex items-center space-x-2">
-							<Receipt className="h-5 w-5 text-warning" />
+					<CardContent className="p-4 h-full">
+						<div className="flex items-center justify-between">
 							<div>
 								<p className="text-sm text-muted-foreground">Avg. Sale</p>
 								<p className="text-2xl font-bold">
@@ -263,19 +264,21 @@ export function Views({
 									})()}
 								</p>
 							</div>
+							<div className="h-10 w-10 rounded-lg bg-warning/10 flex items-center justify-center">
+								<Receipt className="h-5 w-5 text-warning" />
+							</div>
 						</div>
 					</CardContent>
 				</Card>
 
 				<Card>
-					<CardContent className="p-4">
-						<div className="flex items-center space-x-2">
-							<CalendarIcon className="h-5 w-5 text-primary" />
-							<div>
+					<CardContent className="p-4 h-full">
+						<div className="flex items-center justify-between">
+							<div className="w-full">
 								<p className="text-sm text-muted-foreground">Select Period</p>
-								<div className="flex items-center gap-2">
+								<div className="mt-2 flex items-center gap-2">
 									<Select value={period} onValueChange={(v: any) => setPeriod(v)}>
-										<SelectTrigger className="w-[140px]">
+										<SelectTrigger className="w-[120px]">
 											<SelectValue placeholder="Period" />
 										</SelectTrigger>
 										<SelectContent>
@@ -287,11 +290,14 @@ export function Views({
 									</Select>
 									<input
 										type="date"
-										className="border rounded px-2 py-1 text-sm"
+										className="border rounded px-2 py-1 text-sm flex-1 min-w-[130px]"
 										value={targetDate}
 										onChange={(e) => setTargetDate(e.target.value)}
 									/>
 								</div>
+							</div>
+							<div className="h-10 w-10 rounded-lg bg-primary/10 hidden md:flex items-center justify-center">
+								<CalendarIcon className="h-5 w-5 text-primary" />
 							</div>
 						</div>
 					</CardContent>

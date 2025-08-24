@@ -8,16 +8,15 @@ const nodemailer_1 = __importDefault(require("nodemailer"));
 const date_fns_1 = require("date-fns");
 class EmailService {
     constructor() {
-        // Configure email settings
         this.transporter = nodemailer_1.default.createTransport({
-            service: 'gmail', // You can change this to other services like 'outlook', 'yahoo', etc.
+            service: process.env.EMAIL_SERVICE || 'gmail',
             auth: {
                 user: process.env.EMAIL_USER || 'your-email@gmail.com',
-                pass: process.env.EMAIL_PASSWORD || 'your-app-password', // Use app password for Gmail
+                pass: process.env.EMAIL_PASSWORD || 'your-app-password',
             },
         });
     }
-    async sendDailyReport(recipientEmail, pdfBuffer, date = new Date(), debtSummary) {
+    async sendDailyReport(recipientEmail, pdfBuffer, date = new Date(), debtSummary, kpi, topItems) {
         try {
             const formattedDate = (0, date_fns_1.format)(date, 'EEEE, MMMM dd, yyyy');
             const fileName = `daily-report-${(0, date_fns_1.format)(date, 'yyyy-MM-dd')}.pdf`;
@@ -36,6 +35,46 @@ class EmailService {
               <p>Hello,</p>
               
               <p>Please find attached the daily business report for <strong>${formattedDate}</strong>.</p>
+
+              ${kpi ? `
+              <div style="background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                <h3 style="margin: 0 0 10px 0; color: #495057;">📈 Today's KPIs</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 12px; color: #6c757d;">Total Sales</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #2563eb;">KSH ${kpi.totalSales.toLocaleString()}</div>
+                  </div>
+                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 12px; color: #6c757d;">Collected</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #059669;">KSH ${kpi.totalPaid.toLocaleString()}</div>
+                  </div>
+                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 12px; color: #6c757d;">Outstanding</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #d97706;">KSH ${kpi.outstandingAmount.toLocaleString()}</div>
+                  </div>
+                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 12px; color: #6c757d;">Transactions</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #0f172a;">${kpi.numberOfSales}</div>
+                  </div>
+                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 12px; color: #6c757d;">Avg Order Value</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #2563eb;">KSH ${kpi.averageOrderValue.toFixed(0)}</div>
+                  </div>
+                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 12px; color: #6c757d;">Profit Margin</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #10b981;">${kpi.profitMargin.toFixed(1)}%</div>
+                  </div>
+                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 12px; color: #6c757d;">Collection Rate</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #0ea5e9;">${kpi.collectionRate.toFixed(1)}%</div>
+                  </div>
+                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
+                    <div style="font-size: 12px; color: #6c757d;">Net Profit</div>
+                    <div style="font-size: 20px; font-weight: bold; color: #059669;">KSH ${kpi.netProfit.toLocaleString()}</div>
+                  </div>
+                </div>
+              </div>
+              ` : ''}
               
               ${debtSummary ? `
               <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
@@ -77,9 +116,36 @@ class EmailService {
                   ${debtSummary ? '<li>Debt Summary and Outstanding Balances</li>' : ''}
                 </ul>
               </div>
-              
+
+              ${topItems && topItems.length > 0 ? `
+              <div style="background-color: #ffffff; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #e9ecef;">
+                <h3 style="margin: 0 0 10px 0; color: #495057;">🔥 Top Selling Items</h3>
+                <div style="overflow-x: auto;">
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                      <tr style="background-color: #f8f9fa;">
+                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid #dee2e6; color: #6c757d;">Item</th>
+                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid #dee2e6; color: #6c757d;">Qty</th>
+                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid #dee2e6; color: #6c757d;">Revenue</th>
+                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid #dee2e6; color: #6c757d;">Profit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      ${topItems.slice(0, 8).map(i => `
+                        <tr>
+                          <td style="padding: 8px; border-bottom: 1px solid #f1f3f5; color: #495057;">${i.name}</td>
+                          <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f5; color: #495057;">${i.quantity.toFixed(2)}</td>
+                          <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f5; color: #2563eb;">KSH ${i.revenue.toLocaleString()}</td>
+                          <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f5; color: #059669;">KSH ${i.profit.toLocaleString()}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              ` : ''}
+
               <p>This report contains comprehensive data about your business performance for the day, including:</p>
-              
               <ul style="color: #495057;">
                 <li>Total sales and revenue figures</li>
                 <li>Profit margins and cost analysis</li>
@@ -89,17 +155,12 @@ class EmailService {
                 <li>Top performing products</li>
                 ${debtSummary ? '<li>Outstanding debts and customer balances</li>' : ''}
               </ul>
-              
+
               <p>If you have any questions about this report or need additional information, please don't hesitate to contact us.</p>
-              
-              <p>Best regards,<br>
-              <strong>Butchery Management System</strong></p>
-              
+              <p>Best regards,<br><strong>Butchery Management System</strong></p>
+
               <hr style="border: none; border-top: 1px solid #dee2e6; margin: 30px 0;">
-              <p style="font-size: 12px; color: #6c757d; text-align: center;">
-                This is an automated email generated by the Butchery Management System.<br>
-                Please do not reply to this email.
-              </p>
+              <p style="font-size: 12px; color: #6c757d; text-align: center;">This is an automated email generated by the Butchery Management System.<br>Please do not reply to this email.</p>
             </div>
           </div>
         `,
@@ -133,12 +194,9 @@ class EmailService {
               <h1 style="color: white; margin: 0;">🚨 Debt Summary Report</h1>
               <p style="color: #f8d7da; margin: 10px 0 0 0;">${formattedDate}</p>
             </div>
-            
             <div style="padding: 20px;">
               <p>Hello,</p>
-              
               <p>Here's your <strong>debt summary report</strong> for <strong>${formattedDate}</strong>.</p>
-              
               <div style="background-color: #f8d7da; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #dc3545;">
                 <h2 style="margin: 0 0 15px 0; color: #721c24;">📊 Summary Overview</h2>
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin: 20px 0;">
@@ -151,12 +209,11 @@ class EmailService {
                     <div style="font-size: 14px; color: #721c24;">Customers with Debt</div>
                   </div>
                   <div style="text-align: center; background: white; padding: 15px; border-radius: 5px;">
-                    <div style="font-size: 28px; font-weight: bold; color: #dc3545;">KSH ${(debtData.totalOutstanding / debtData.customerCount).toFixed(0)}</div>
+                    <div style="font-size: 28px; font-weight: bold; color: #dc3545;">KSH ${(debtData.totalOutstanding / Math.max(1, debtData.customerCount)).toFixed(0)}</div>
                     <div style="font-size: 14px; color: #721c24;">Average Debt</div>
                   </div>
                 </div>
               </div>
-              
               <div style="background-color: #fff3cd; padding: 20px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
                 <h3 style="margin: 0 0 15px 0; color: #856404;">⚠️ Top 10 Debtors</h3>
                 <div style="overflow-x: auto;">
@@ -180,7 +237,6 @@ class EmailService {
                   </table>
                 </div>
               </div>
-              
               ${debtData.allDebtors.length > 10 ? `
               <div style="background-color: #e9ecef; padding: 20px; border-radius: 5px; margin: 20px 0;">
                 <h3 style="margin: 0 0 15px 0; color: #495057;">📋 Complete Debt List</h3>
@@ -205,7 +261,6 @@ class EmailService {
                 </div>
               </div>
               ` : ''}
-              
               <div style="background-color: #d1ecf1; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #17a2b8;">
                 <h3 style="margin: 0 0 10px 0; color: #0c5460;">💡 Action Items</h3>
                 <ul style="margin: 0; padding-left: 20px; color: #0c5460;">
@@ -215,17 +270,10 @@ class EmailService {
                   <li>Consider offering discounts for early debt settlement</li>
                 </ul>
               </div>
-              
               <p>This debt summary helps you stay on top of your accounts receivable and take proactive steps to collect outstanding payments.</p>
-              
-              <p>Best regards,<br>
-              <strong>Butchery Management System</strong></p>
-              
+              <p>Best regards,<br><strong>Butchery Management System</strong></p>
               <hr style="border: none; border-top: 1px solid #dee2e6; margin: 30px 0;">
-              <p style="font-size: 12px; color: #6c757d; text-align: center;">
-                This is an automated debt summary email generated by the Butchery Management System.<br>
-                Please do not reply to this email.
-              </p>
+              <p style="font-size: 12px; color: #6c757d; text-align: center;">This is an automated debt summary email generated by the Butchery Management System.<br>Please do not reply to this email.</p>
             </div>
           </div>
         `,
