@@ -165,53 +165,73 @@ router.post("/send-complete-report", authenticateToken, async (req, res) => {
       return res.status(400).json({ error: "Recipient email is required" });
     }
 
-    // Generate the daily report HTML
-    const pdfBuffer = await pdfService.generateDailyReport(new Date());
+    const reportDate = new Date();
+    const pdfBuffer = await pdfService.generateDailyReport(reportDate);
     
-    // Get debt summary data
-    const customers = await prisma.customer.findMany({
-      include: { transactions: true }
-    });
-
+    // Debt summary data
+    const customers = await prisma.customer.findMany({ include: { transactions: true } });
     const debtData = customers.map(customer => {
       const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
-      return {
-        customerId: customer.id,
-        name: customer.name,
-        balance
-      };
-    }).filter(customer => customer.balance < 0); // Only customers with debt
+      return { customerId: customer.id, name: customer.name, balance };
+    }).filter(c => c.balance < 0);
 
-    const totalOutstanding = debtData.reduce((sum, customer) => sum + Math.abs(customer.balance), 0);
+    const totalOutstanding = debtData.reduce((sum, c) => sum + Math.abs(c.balance), 0);
     const customerCount = debtData.length;
-    
-    // Sort by debt amount (highest first)
     const topDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+    const debtSummary = { totalOutstanding, customerCount, topDebtors };
 
-    const debtSummary = {
-      totalOutstanding,
-      customerCount,
-      topDebtors: topDebtors
-    };
+    // Compute KPIs and top items for the day
+    const start = new Date(reportDate);
+    start.setDate(start.getDate() - 1);
+    start.setHours(0,0,0,0);
+    const end = new Date(reportDate);
+    end.setHours(23,59,59,999);
 
-    // Send the complete daily report email
-    const success = await emailService.sendDailyReport(recipientEmail, pdfBuffer, new Date(), debtSummary);
+    const sales = await prisma.sale.findMany({
+      where: { createdAt: { gte: start, lte: end } },
+      include: { items: { include: { item: true } } }
+    });
+
+    const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
+    const totalPaid = sales.reduce((sum, s) => sum + s.paidAmount, 0);
+    const outstandingAmount = totalSales - totalPaid;
+    const numberOfSales = sales.length;
+
+    let totalCost = 0;
+    const itemAgg: Record<string, { quantity: number; revenue: number; profit: number; cost: number }> = {};
+    for (const sale of sales) {
+      for (const it of sale.items) {
+        const itemCost = (it.item as any).basePrice || it.price * 0.7;
+        totalCost += it.quantity * itemCost;
+        if (!itemAgg[it.item.name]) {
+          itemAgg[it.item.name] = { quantity: 0, revenue: 0, profit: 0, cost: 0 };
+        }
+        itemAgg[it.item.name].quantity += it.quantity;
+        itemAgg[it.item.name].revenue += it.quantity * it.price;
+        itemAgg[it.item.name].cost += it.quantity * itemCost;
+        itemAgg[it.item.name].profit += it.quantity * (it.price - itemCost);
+      }
+    }
+
+    const netProfit = totalSales - totalCost;
+    const profitMargin = totalSales > 0 ? (netProfit / totalSales) * 100 : 0;
+    const collectionRate = totalSales > 0 ? (totalPaid / totalSales) * 100 : 0;
+    const averageOrderValue = numberOfSales > 0 ? totalSales / numberOfSales : 0;
+
+    const topItems = Object.entries(itemAgg)
+      .map(([name, data]) => ({ name, quantity: data.quantity, revenue: data.revenue, profit: data.profit }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 10);
+
+    const kpi = { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit };
+
+    // Send email
+    const success = await emailService.sendDailyReport(recipientEmail, pdfBuffer, reportDate, debtSummary, kpi, topItems);
     
     if (success) {
-      res.json({ 
-        success: true, 
-        message: `Complete daily report email sent successfully to ${recipientEmail}`,
-        debtSummary: {
-          totalOutstanding,
-          customerCount,
-          topDebtors: topDebtors
-        }
-      });
+      res.json({ success: true, message: `Complete daily report email sent successfully to ${recipientEmail}`, debtSummary, kpi, topItems });
     } else {
-      res.status(500).json({ 
-        success: false, 
-        error: "Failed to send complete daily report email" 
-      });
+      res.status(500).json({ success: false, error: "Failed to send complete daily report email" });
     }
   } catch (error) {
     console.error("Error sending complete daily report email:", error);
