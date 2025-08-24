@@ -29,68 +29,167 @@ export class EmailService {
       collectionRate: number;
       netProfit: number;
     },
-    topItems?: Array<{ name: string; quantity: number; revenue: number; profit: number }>
+    topItems?: Array<{ name: string; quantity: number; revenue: number; profit: number }>,
+    rollup?: {
+      weekly?: {
+        totalSales: number;
+        totalPaid: number;
+        outstandingAmount: number;
+        numberOfSales: number;
+        averageOrderValue: number;
+        profitMargin: number;
+        collectionRate: number;
+        netProfit: number;
+      };
+      monthly?: {
+        totalSales: number;
+        totalPaid: number;
+        outstandingAmount: number;
+        numberOfSales: number;
+        averageOrderValue: number;
+        profitMargin: number;
+        collectionRate: number;
+        netProfit: number;
+      };
+      inventory?: { totalItems: number; totalValue: number; lowStockItems: number; outOfStock: number };
+      expenses?: { dailyTotal: number; weeklyTotal: number; monthlyTotal: number };
+    }
   ): Promise<boolean> {
     try {
       const formattedDate = format(date, 'EEEE, MMMM dd, yyyy');
       const fileName = `daily-report-${format(date, 'yyyy-MM-dd')}.pdf`;
+
+      // Safe guards for optional rollup objects
+      const weeklyTotals = rollup?.weekly || { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 };
+      const monthlyTotals = rollup?.monthly || { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 };
 
       const mailOptions = {
         from: process.env.EMAIL_USER || 'your-email@gmail.com',
         to: recipientEmail,
         subject: `Daily Business Report - ${formattedDate}`,
         html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-radius: 5px;">
-              <h1 style="color: #333; margin: 0;">📊 Daily Business Report</h1>
-              <p style="color: #666; margin: 10px 0 0 0;">${formattedDate}</p>
+          <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto;">
+            <div style="background-color: #f8f9fa; padding: 20px; text-align: center; border-radius: 5px; border: 1px solid #e9ecef;">
+              <h1 style="color: #111827; margin: 0;">📊 Daily, Weekly & Monthly Business Report</h1>
+              <p style="color: #6b7280; margin: 10px 0 0 0;">${formattedDate}</p>
             </div>
             
             <div style="padding: 20px;">
-              <p>Hello,</p>
-              
-              <p>Please find attached the daily business report for <strong>${formattedDate}</strong>.</p>
+              <p style="margin: 0 0 12px 0; color: #111827;">Hello,</p>
+              <p style="margin: 0 0 16px 0; color: #374151;">Please find attached the professional PDF report. Below is a concise overview with daily, week-to-date, and month-to-date highlights covering sales, stock, debts, and expenses.</p>
 
               ${kpi ? `
-              <div style="background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <h3 style="margin: 0 0 10px 0; color: #495057;">📈 Today's KPIs</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 12px; color: #6c757d;">Total Sales</div>
-                    <div style="font-size: 20px; font-weight: bold; color: #2563eb;">KSH ${kpi.totalSales.toLocaleString()}</div>
-                  </div>
-                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 12px; color: #6c757d;">Collected</div>
-                    <div style="font-size: 20px; font-weight: bold; color: #059669;">KSH ${kpi.totalPaid.toLocaleString()}</div>
-                  </div>
-                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 12px; color: #6c757d;">Outstanding</div>
-                    <div style="font-size: 20px; font-weight: bold; color: #d97706;">KSH ${kpi.outstandingAmount.toLocaleString()}</div>
-                  </div>
-                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 12px; color: #6c757d;">Transactions</div>
-                    <div style="font-size: 20px; font-weight: bold; color: #0f172a;">${kpi.numberOfSales}</div>
-                  </div>
-                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 12px; color: #6c757d;">Avg Order Value</div>
-                    <div style="font-size: 20px; font-weight: bold; color: #2563eb;">KSH ${kpi.averageOrderValue.toFixed(0)}</div>
-                  </div>
-                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 12px; color: #6c757d;">Profit Margin</div>
-                    <div style="font-size: 20px; font-weight: bold; color: #10b981;">${kpi.profitMargin.toFixed(1)}%</div>
-                  </div>
-                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 12px; color: #6c757d;">Collection Rate</div>
-                    <div style="font-size: 20px; font-weight: bold; color: #0ea5e9;">${kpi.collectionRate.toFixed(1)}%</div>
-                  </div>
-                  <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #dee2e6;">
-                    <div style="font-size: 12px; color: #6c757d;">Net Profit</div>
-                    <div style="font-size: 20px; font-weight: bold; color: #059669;">KSH ${kpi.netProfit.toLocaleString()}</div>
-                  </div>
+              <div style="background-color: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
+                <h3 style="margin: 0 0 10px 0; color: #111827;">📅 Daily KPIs</h3>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                  ${[
+                    { label: 'Sales', value: `KSH ${kpi.totalSales.toLocaleString()}`, color: '#2563eb' },
+                    { label: 'Collected', value: `KSH ${kpi.totalPaid.toLocaleString()}`, color: '#059669' },
+                    { label: 'Outstanding', value: `KSH ${kpi.outstandingAmount.toLocaleString()}`, color: '#d97706' },
+                    { label: 'Net Profit', value: `KSH ${kpi.netProfit.toLocaleString()}`, color: '#059669' }
+                  ].map(m => `
+                    <div style="background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:10px;">
+                      <div style="font-size:12px; color:#6b7280;">${m.label}</div>
+                      <div style="font-size:18px; font-weight:700; color:${m.color}">${m.value}</div>
+                    </div>
+                  `).join('')}
+                </div>
+                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px;">
+                  ${[
+                    { label: 'Transactions', value: `${kpi.numberOfSales}`, color: '#111827' },
+                    { label: 'Avg Order', value: `KSH ${kpi.averageOrderValue.toFixed(0)}`, color: '#2563eb' },
+                    { label: 'Collection Rate', value: `${kpi.collectionRate.toFixed(1)}%`, color: '#0ea5e9' }
+                  ].map(m => `
+                    <div style="background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:10px;">
+                      <div style="font-size:12px; color:#6b7280;">${m.label}</div>
+                      <div style="font-size:18px; font-weight:700; color:${m.color}">${m.value}</div>
+                    </div>
+                  `).join('')}
                 </div>
               </div>
               ` : ''}
-              
+
+              ${rollup?.weekly ? `
+              <div style="padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e5e7eb;">
+                <h3 style="margin: 0 0 10px 0; color: #111827;">🗓️ Week-to-Date</h3>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                  ${[
+                    { label: 'Sales (WTD)', value: weeklyTotals.totalSales, color: '#2563eb' },
+                    { label: 'Collected', value: weeklyTotals.totalPaid, color: '#059669' },
+                    { label: 'Outstanding', value: weeklyTotals.outstandingAmount, color: '#d97706' },
+                    { label: 'Net Profit', value: weeklyTotals.netProfit, color: '#059669' }
+                  ].map(m => `
+                    <div style="background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:10px;">
+                      <div style="font-size:12px; color:#6b7280;">${m.label}</div>
+                      <div style="font-size:18px; font-weight:700; color:${m.color}">KSH ${m.value.toLocaleString()}</div>
+                      <div style="margin-top:6px; height:6px; background:#f3f4f6; border-radius:4px; overflow:hidden;">
+                        <div style="height:6px; width:${Math.min(100, (m.value / Math.max(1, weeklyTotals.totalSales)) * 100)}%; background:${m.color}"></div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+              ` : ''}
+
+              ${rollup?.monthly ? `
+              <div style="padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #e5e7eb;">
+                <h3 style="margin: 0 0 10px 0; color: #111827;">📅 Month-to-Date</h3>
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                  ${[
+                    { label: 'Sales (MTD)', value: monthlyTotals.totalSales, color: '#2563eb' },
+                    { label: 'Collected', value: monthlyTotals.totalPaid, color: '#059669' },
+                    { label: 'Outstanding', value: monthlyTotals.outstandingAmount, color: '#d97706' },
+                    { label: 'Net Profit', value: monthlyTotals.netProfit, color: '#059669' }
+                  ].map(m => `
+                    <div style="background:#fff; border:1px solid #e5e7eb; border-radius:6px; padding:10px;">
+                      <div style="font-size:12px; color:#6b7280;">${m.label}</div>
+                      <div style="font-size:18px; font-weight:700; color:${m.color}">KSH ${m.value.toLocaleString()}</div>
+                      <div style="margin-top:6px; height:6px; background:#f3f4f6; border-radius:4px; overflow:hidden;">
+                        <div style="height:6px; width:${Math.min(100, (m.value / Math.max(1, monthlyTotals.totalSales)) * 100)}%; background:${m.color}"></div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+              ` : ''}
+
+              ${rollup?.expenses ? `
+              <div style="background-color:#fff7ed; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #fde68a;">
+                <h3 style="margin: 0 0 10px 0; color: #92400e;">💸 Expenses</h3>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                  ${[
+                    { label: 'Today', value: rollup.expenses.dailyTotal },
+                    { label: 'Week-to-Date', value: rollup.expenses.weeklyTotal },
+                    { label: 'Month-to-Date', value: rollup.expenses.monthlyTotal }
+                  ].map(m => `
+                    <div style="background:#fff; border:1px solid #fde68a; border-radius:6px; padding:10px;">
+                      <div style="font-size:12px; color:#b45309;">${m.label}</div>
+                      <div style="font-size:18px; font-weight:700; color:#b45309;">KSH ${m.value.toLocaleString()}</div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+              ` : ''}
+
+              ${rollup?.inventory ? `
+              <div style="background:#eff6ff; padding: 16px; border-radius: 8px; margin: 16px 0; border: 1px solid #bfdbfe;">
+                <h3 style="margin: 0 0 10px 0; color: #1d4ed8;">📦 Stock Summary</h3>
+                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+                  ${[
+                    { label: 'Total Items', value: rollup.inventory.totalItems, color: '#1d4ed8' },
+                    { label: 'Total Value', value: `KSH ${rollup.inventory.totalValue.toLocaleString()}`, color: '#1d4ed8' },
+                    { label: 'Low Stock', value: rollup.inventory.lowStockItems, color: '#d97706' },
+                    { label: 'Out of Stock', value: rollup.inventory.outOfStock, color: '#dc2626' }
+                  ].map(m => `
+                    <div style="background:#fff; border:1px solid #bfdbfe; border-radius:6px; padding:10px;">
+                      <div style="font-size:12px; color:#1e3a8a;">${m.label}</div>
+                      <div style="font-size:18px; font-weight:700; color:${m.color}">${m.value}</div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+              ` : ''}
+
               ${debtSummary ? `
               <div style="background-color: #fff3cd; padding: 15px; border-radius: 5px; margin: 20px 0; border-left: 4px solid #ffc107;">
                 <h3 style="margin: 0 0 10px 0; color: #856404;">⚠️ Debt Summary</h3>
@@ -117,39 +216,25 @@ export class EmailService {
                 ` : ''}
               </div>
               ` : ''}
-              
-              <div style="background-color: #e9ecef; padding: 15px; border-radius: 5px; margin: 20px 0;">
-                <h3 style="margin: 0 0 10px 0; color: #495057;">📋 Report Summary</h3>
-                <ul style="margin: 0; padding-left: 20px; color: #495057;">
-                  <li>Sales Summary and Metrics</li>
-                  <li>Top Selling Items</li>
-                  <li>Recent Sales Transactions</li>
-                  <li>Profit & Loss Analysis</li>
-                  <li>Inventory Status</li>
-                  <li>Cash Flow Summary</li>
-                  <li>Customer Analysis</li>
-                  ${debtSummary ? '<li>Debt Summary and Outstanding Balances</li>' : ''}
-                </ul>
-              </div>
 
               ${topItems && topItems.length > 0 ? `
-              <div style="background-color: #ffffff; padding: 15px; border-radius: 5px; margin: 20px 0; border: 1px solid #e9ecef;">
-                <h3 style="margin: 0 0 10px 0; color: #495057;">🔥 Top Selling Items</h3>
+              <div style="background-color: #ffffff; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #e5e7eb;">
+                <h3 style="margin: 0 0 10px 0; color: #111827;">🔥 Top Selling Items (Today)</h3>
                 <div style="overflow-x: auto;">
                   <table style="width: 100%; border-collapse: collapse;">
                     <thead>
-                      <tr style="background-color: #f8f9fa;">
-                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid #dee2e6; color: #6c757d;">Item</th>
-                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid #dee2e6; color: #6c757d;">Qty</th>
-                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid #dee2e6; color: #6c757d;">Revenue</th>
-                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid #dee2e6; color: #6c757d;">Profit</th>
+                      <tr style="background-color: #f9fafb;">
+                        <th style="padding: 8px; text-align: left; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Item</th>
+                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Qty</th>
+                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Revenue</th>
+                        <th style="padding: 8px; text-align: right; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Profit</th>
                       </tr>
                     </thead>
                     <tbody>
                       ${topItems.slice(0, 8).map(i => `
                         <tr>
-                          <td style="padding: 8px; border-bottom: 1px solid #f1f3f5; color: #495057;">${i.name}</td>
-                          <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f5; color: #495057;">${i.quantity.toFixed(2)}</td>
+                          <td style="padding: 8px; border-bottom: 1px solid #f1f3f5; color: #111827;">${i.name}</td>
+                          <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f5; color: #111827;">${i.quantity.toFixed(2)}</td>
                           <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f5; color: #2563eb;">KSH ${i.revenue.toLocaleString()}</td>
                           <td style="padding: 8px; text-align: right; border-bottom: 1px solid #f1f3f5; color: #059669;">KSH ${i.profit.toLocaleString()}</td>
                         </tr>
@@ -160,23 +245,12 @@ export class EmailService {
               </div>
               ` : ''}
 
-              <p>This report contains comprehensive data about your business performance for the day, including:</p>
-              <ul style="color: #495057;">
-                <li>Total sales and revenue figures</li>
-                <li>Profit margins and cost analysis</li>
-                <li>Inventory valuation and stock levels</li>
-                <li>Customer spending patterns</li>
-                <li>Payment collection rates</li>
-                <li>Top performing products</li>
-                ${debtSummary ? '<li>Outstanding debts and customer balances</li>' : ''}
-              </ul>
-
-              <p>If you have any questions about this report or need additional information, please don't hesitate to contact us.</p>
-              <p>Best regards,<br><strong>Butchery Management System</strong></p>
-
-              <hr style="border: none; border-top: 1px solid #dee2e6; margin: 30px 0;">
-              <p style="font-size: 12px; color: #6c757d; text-align: center;">This is an automated email generated by the Butchery Management System.<br>Please do not reply to this email.</p>
+              <p style="margin: 16px 0; color: #374151;">If you have any questions about this report or need additional analysis, please reply to this email.</p>
+              <p style="margin: 0; color: #111827;">Best regards,<br><strong>Butchery Management System</strong></p>
             </div>
+
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;">
+            <p style="font-size: 12px; color: #6b7280; text-align: center;">This is an automated email generated by the Butchery Management System.</p>
           </div>
         `,
         attachments: [
