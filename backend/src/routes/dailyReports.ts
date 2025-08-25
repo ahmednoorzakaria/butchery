@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/authMiddleware";
 import { SchedulerService } from "../services/schedulerService";
-import { PDFService } from "../services/pdfService";
+import { ProfessionalReportService } from "../services/professionalReportService";
 import { EmailService } from "../services/emailService";
 import prisma from "../lib/prisma";
 
 const router = Router();
 const schedulerService = new SchedulerService();
-const pdfService = new PDFService();
+const reportService = new ProfessionalReportService();
 const emailService = new EmailService();
 
 // Initialize scheduler when the module loads
@@ -80,13 +80,34 @@ router.post("/test-email", authenticateToken, async (req, res) => {
   }
 });
 
-// GET /daily-reports/download/:date - Download daily report PDF
+// GET /daily-reports/download/:date - Download daily report Excel
 router.get("/download/:date", authenticateToken, async (req, res) => {
   try {
     const { date } = req.params;
     const reportDate = date ? new Date(date) : new Date();
     
-    const pdfBuffer = await pdfService.generateDailyReport(reportDate);
+    const excelBuffer = await reportService.generateExcelReport(reportDate);
+    
+    const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.xlsx`;
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Content-Length', excelBuffer.length);
+    
+    res.send(excelBuffer);
+  } catch (error) {
+    console.error("Error downloading daily report:", error);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// GET /daily-reports/download-pdf/:date - Download daily report PDF
+router.get("/download-pdf/:date", authenticateToken, async (req, res) => {
+  try {
+    const { date } = req.params;
+    const reportDate = date ? new Date(date) : new Date();
+    
+    const pdfBuffer = await reportService.generateHTMLPDFReport(reportDate);
     
     const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.pdf`;
     
@@ -96,7 +117,7 @@ router.get("/download/:date", authenticateToken, async (req, res) => {
     
     res.send(pdfBuffer);
   } catch (error) {
-    console.error("Error downloading daily report:", error);
+    console.error("Error downloading daily report PDF:", error);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -107,7 +128,7 @@ router.get("/preview/:date", authenticateToken, async (req, res) => {
     const { date } = req.params;
     const reportDate = date ? new Date(date) : new Date();
     
-    const pdfBuffer = await pdfService.generateDailyReport(reportDate);
+    const pdfBuffer = await reportService.generateHTMLPDFReport(reportDate);
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Length', pdfBuffer.length);
@@ -159,15 +180,27 @@ router.get("/configuration", authenticateToken, async (req, res) => {
 // POST /daily-reports/send-complete-report - Send complete daily report email
 router.post("/send-complete-report", authenticateToken, async (req, res) => {
   try {
-    const { recipientEmail } = req.body;
+    const { recipientEmail, reportType = 'excel' } = req.body;
     
     if (!recipientEmail) {
       return res.status(400).json({ error: "Recipient email is required" });
     }
 
     const reportDate = new Date();
-    const pdfBuffer = await pdfService.generateDailyReport(reportDate);
-    
+    let reportBuffer: Buffer;
+    let fileName: string;
+    let contentType: string;
+
+    if (reportType === 'pdf') {
+      reportBuffer = await reportService.generateHTMLPDFReport(reportDate);
+      fileName = `daily-report-${reportDate.toISOString().split('T')[0]}.pdf`;
+      contentType = 'application/pdf';
+    } else {
+      reportBuffer = await reportService.generateExcelReport(reportDate);
+      fileName = `daily-report-${reportDate.toISOString().split('T')[0]}.xlsx`;
+      contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
+
     // Debt summary data
     const customers = await prisma.customer.findMany({ include: { transactions: true } });
     const debtData = customers.map(customer => {
@@ -225,11 +258,19 @@ router.post("/send-complete-report", authenticateToken, async (req, res) => {
 
     const kpi = { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit };
 
-    // Send email
-    const success = await emailService.sendDailyReport(recipientEmail, pdfBuffer, reportDate, debtSummary, kpi, topItems);
+    // Send email with the new report
+    const success = await emailService.sendDailyReport(recipientEmail, reportBuffer, reportDate, debtSummary, kpi, topItems, fileName, contentType);
     
     if (success) {
-      res.json({ success: true, message: `Complete daily report email sent successfully to ${recipientEmail}`, debtSummary, kpi, topItems });
+      res.json({ 
+        success: true, 
+        message: `Complete daily report email sent successfully to ${recipientEmail}`, 
+        debtSummary, 
+        kpi, 
+        topItems,
+        reportType,
+        fileName
+      });
     } else {
       res.status(500).json({ success: false, error: "Failed to send complete daily report email" });
     }

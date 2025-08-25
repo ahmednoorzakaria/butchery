@@ -5,7 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const authMiddleware_1 = require("../middleware/authMiddleware");
-const pdfkit_1 = __importDefault(require("pdfkit"));
 const date_fns_1 = require("date-fns");
 const prisma_1 = __importDefault(require("../lib/prisma"));
 const reportService_1 = require("../services/reportService");
@@ -406,22 +405,11 @@ router.get("/sales/:id/receipt", authMiddleware_1.authenticateToken, async (req,
     if (!sale)
         return res.status(404).json({ error: "Sale not found" });
     if (format === "pdf") {
-        const doc = new pdfkit_1.default();
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", 'inline; filename="receipt.pdf"');
-        doc.pipe(res);
-        doc.fontSize(18).text("Receipt", { align: "center" });
-        doc.text(`Customer: ${sale.customer.name} (${sale.customer.phone})`);
-        doc.text(`Date: ${sale.createdAt}`);
-        doc.moveDown();
-        sale.items.forEach((item) => {
-            doc.text(`${item.item.name} x${item.quantity} @ ${item.price} = ${item.price * item.quantity}`);
+        // PDF generation temporarily disabled - use JSON format instead
+        res.status(400).json({
+            error: "PDF format temporarily unavailable. Please use JSON format or contact administrator for professional reports.",
+            sale
         });
-        doc.moveDown();
-        doc.text(`Discount: ${sale.discount}`);
-        doc.text(`Total: ${sale.totalAmount}`);
-        doc.text(`Paid: ${sale.paidAmount}`);
-        doc.end();
     }
     else {
         res.json(sale);

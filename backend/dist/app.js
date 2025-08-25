@@ -16,6 +16,7 @@ const sales_optimized_1 = __importDefault(require("./routes/sales-optimized"));
 const reports_1 = __importDefault(require("./routes/reports"));
 const dailyReports_1 = __importDefault(require("./routes/dailyReports"));
 const expenses_1 = __importDefault(require("./routes/expenses"));
+const professionalReports_1 = __importDefault(require("./routes/professionalReports"));
 const app = (0, express_1.default)();
 const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:8080';
 const corsOptions = {
@@ -40,4 +41,5 @@ app.use('/reports', reports_1.default);
 app.use('/sales/reports', reports_1.default);
 app.use('/daily-reports', dailyReports_1.default);
 app.use('/expenses', expenses_1.default);
+app.use('/professional-reports', professionalReports_1.default);
 exports.default = app;

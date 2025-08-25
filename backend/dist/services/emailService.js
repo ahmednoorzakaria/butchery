@@ -16,10 +16,10 @@ class EmailService {
             },
         });
     }
-    async sendDailyReport(recipientEmail, pdfBuffer, date = new Date(), debtSummary, kpi, topItems, rollup) {
+    async sendDailyReport(recipientEmail, reportBuffer, date = new Date(), debtSummary, kpi, topItems, fileName, contentType, rollup) {
         try {
             const formattedDate = (0, date_fns_1.format)(date, 'EEEE, MMMM dd, yyyy');
-            const fileName = `daily-report-${(0, date_fns_1.format)(date, 'yyyy-MM-dd')}.pdf`;
+            const reportFileName = fileName || `daily-report-${(0, date_fns_1.format)(date, 'yyyy-MM-dd')}.xlsx`;
             // Safe guards for optional rollup objects
             const weeklyTotals = rollup?.weekly || { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 };
             const monthlyTotals = rollup?.monthly || { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 };
@@ -215,9 +215,9 @@ class EmailService {
         `,
                 attachments: [
                     {
-                        filename: fileName,
-                        content: pdfBuffer,
-                        contentType: 'application/pdf',
+                        filename: reportFileName,
+                        content: reportBuffer,
+                        contentType: contentType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     },
                 ],
             };

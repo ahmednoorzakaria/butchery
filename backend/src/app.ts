@@ -12,6 +12,7 @@ import salesOptimizedRouter from './routes/sales-optimized';
 import reportsRouter from './routes/reports';
 import dailyReportsRouter from './routes/dailyReports';
 import expensesRouter from './routes/expenses';
+import professionalReportsRouter from './routes/professionalReports';
 
 const app = express();
 
@@ -41,5 +42,6 @@ app.use('/reports', reportsRouter);
 app.use('/sales/reports', reportsRouter);
 app.use('/daily-reports', dailyReportsRouter);
 app.use('/expenses', expensesRouter);
+app.use('/professional-reports', professionalReportsRouter);
 
 export default app;

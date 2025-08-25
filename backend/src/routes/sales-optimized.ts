@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { authenticateToken } from "../middleware/authMiddleware";
-import * as PDFDocument from "pdfkit";
 import {
   startOfDay,
   endOfDay,

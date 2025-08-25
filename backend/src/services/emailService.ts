@@ -16,7 +16,7 @@ export class EmailService {
 
   async sendDailyReport(
     recipientEmail: string,
-    pdfBuffer: Buffer,
+    reportBuffer: Buffer,
     date: Date = new Date(),
     debtSummary?: { totalOutstanding: number; customerCount: number; topDebtors: Array<{ name: string; balance: number }> },
     kpi?: {
@@ -30,6 +30,8 @@ export class EmailService {
       netProfit: number;
     },
     topItems?: Array<{ name: string; quantity: number; revenue: number; profit: number }>,
+    fileName?: string,
+    contentType?: string,
     rollup?: {
       weekly?: {
         totalSales: number;
@@ -57,7 +59,7 @@ export class EmailService {
   ): Promise<boolean> {
     try {
       const formattedDate = format(date, 'EEEE, MMMM dd, yyyy');
-      const fileName = `daily-report-${format(date, 'yyyy-MM-dd')}.pdf`;
+      const reportFileName = fileName || `daily-report-${format(date, 'yyyy-MM-dd')}.xlsx`;
 
       // Safe guards for optional rollup objects
       const weeklyTotals = rollup?.weekly || { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 };
@@ -255,9 +257,9 @@ export class EmailService {
         `,
         attachments: [
           {
-            filename: fileName,
-            content: pdfBuffer,
-            contentType: 'application/pdf',
+            filename: reportFileName,
+            content: reportBuffer,
+            contentType: contentType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           },
         ],
       };

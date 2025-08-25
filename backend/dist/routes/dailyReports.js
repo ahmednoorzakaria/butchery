@@ -6,12 +6,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const authMiddleware_1 = require("../middleware/authMiddleware");
 const schedulerService_1 = require("../services/schedulerService");
-const pdfService_1 = require("../services/pdfService");
+const professionalReportService_1 = require("../services/professionalReportService");
 const emailService_1 = require("../services/emailService");
 const prisma_1 = __importDefault(require("../lib/prisma"));
 const router = (0, express_1.Router)();
 const schedulerService = new schedulerService_1.SchedulerService();
-const pdfService = new pdfService_1.PDFService();
+const reportService = new professionalReportService_1.ProfessionalReportService();
 const emailService = new emailService_1.EmailService();
 // Initialize scheduler when the module loads
 schedulerService.initialize().then(() => {
@@ -80,12 +80,29 @@ router.post("/test-email", authMiddleware_1.authenticateToken, async (req, res) 
         res.status(500).json({ error: "Server error" });
     }
 });
-// GET /daily-reports/download/:date - Download daily report PDF
+// GET /daily-reports/download/:date - Download daily report Excel
 router.get("/download/:date", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
         const { date } = req.params;
         const reportDate = date ? new Date(date) : new Date();
-        const pdfBuffer = await pdfService.generateDailyReport(reportDate);
+        const excelBuffer = await reportService.generateExcelReport(reportDate);
+        const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.xlsx`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.setHeader('Content-Length', excelBuffer.length);
+        res.send(excelBuffer);
+    }
+    catch (error) {
+        console.error("Error downloading daily report:", error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+// GET /daily-reports/download-pdf/:date - Download daily report PDF
+router.get("/download-pdf/:date", authMiddleware_1.authenticateToken, async (req, res) => {
+    try {
+        const { date } = req.params;
+        const reportDate = date ? new Date(date) : new Date();
+        const pdfBuffer = await reportService.generateHTMLPDFReport(reportDate);
         const fileName = `daily-report-${date || new Date().toISOString().split('T')[0]}.pdf`;
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
@@ -93,7 +110,7 @@ router.get("/download/:date", authMiddleware_1.authenticateToken, async (req, re
         res.send(pdfBuffer);
     }
     catch (error) {
-        console.error("Error downloading daily report:", error);
+        console.error("Error downloading daily report PDF:", error);
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -102,7 +119,7 @@ router.get("/preview/:date", authMiddleware_1.authenticateToken, async (req, res
     try {
         const { date } = req.params;
         const reportDate = date ? new Date(date) : new Date();
-        const pdfBuffer = await pdfService.generateDailyReport(reportDate);
+        const pdfBuffer = await reportService.generateHTMLPDFReport(reportDate);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Length', pdfBuffer.length);
         res.send(pdfBuffer);
@@ -152,12 +169,24 @@ router.get("/configuration", authMiddleware_1.authenticateToken, async (req, res
 // POST /daily-reports/send-complete-report - Send complete daily report email
 router.post("/send-complete-report", authMiddleware_1.authenticateToken, async (req, res) => {
     try {
-        const { recipientEmail } = req.body;
+        const { recipientEmail, reportType = 'excel' } = req.body;
         if (!recipientEmail) {
             return res.status(400).json({ error: "Recipient email is required" });
         }
         const reportDate = new Date();
-        const pdfBuffer = await pdfService.generateDailyReport(reportDate);
+        let reportBuffer;
+        let fileName;
+        let contentType;
+        if (reportType === 'pdf') {
+            reportBuffer = await reportService.generateHTMLPDFReport(reportDate);
+            fileName = `daily-report-${reportDate.toISOString().split('T')[0]}.pdf`;
+            contentType = 'application/pdf';
+        }
+        else {
+            reportBuffer = await reportService.generateExcelReport(reportDate);
+            fileName = `daily-report-${reportDate.toISOString().split('T')[0]}.xlsx`;
+            contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        }
         // Debt summary data
         const customers = await prisma_1.default.customer.findMany({ include: { transactions: true } });
         const debtData = customers.map(customer => {
@@ -206,10 +235,18 @@ router.post("/send-complete-report", authMiddleware_1.authenticateToken, async (
             .sort((a, b) => b.revenue - a.revenue)
             .slice(0, 10);
         const kpi = { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit };
-        // Send email
-        const success = await emailService.sendDailyReport(recipientEmail, pdfBuffer, reportDate, debtSummary, kpi, topItems);
+        // Send email with the new report
+        const success = await emailService.sendDailyReport(recipientEmail, reportBuffer, reportDate, debtSummary, kpi, topItems, fileName, contentType);
         if (success) {
-            res.json({ success: true, message: `Complete daily report email sent successfully to ${recipientEmail}`, debtSummary, kpi, topItems });
+            res.json({
+                success: true,
+                message: `Complete daily report email sent successfully to ${recipientEmail}`,
+                debtSummary,
+                kpi,
+                topItems,
+                reportType,
+                fileName
+            });
         }
         else {
             res.status(500).json({ success: false, error: "Failed to send complete daily report email" });

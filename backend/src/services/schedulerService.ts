@@ -1,16 +1,16 @@
 import cron from 'node-cron';
-import { PDFService } from './pdfService';
+import { ProfessionalReportService } from './professionalReportService';
 import { EmailService } from './emailService';
 import prisma from '../lib/prisma';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
 
 export class SchedulerService {
-  private pdfService: PDFService;
+  private reportService: ProfessionalReportService;
   private emailService: EmailService;
   private isRunning: boolean = false;
 
   constructor() {
-    this.pdfService = new PDFService();
+    this.reportService = new ProfessionalReportService();
     this.emailService = new EmailService();
   }
 
@@ -53,10 +53,10 @@ export class SchedulerService {
     this.isRunning = true;
 
     try {
-      console.log('Generating daily report PDF...');
-      const pdfBuffer = await this.pdfService.generateDailyReport(date);
+      console.log('Generating daily report Excel...');
+      const excelBuffer = await this.reportService.generateExcelReport(date);
       
-      console.log('PDF generated successfully, sending emails...');
+      console.log('Excel report generated successfully, sending emails...');
       
       // Get summaries
       const debtSummary = await this.getDebtSummary();
@@ -98,11 +98,13 @@ export class SchedulerService {
       const emailPromises = adminUsers.map(user => 
         this.emailService.sendDailyReport(
           user.email,
-          pdfBuffer,
+          excelBuffer,
           date,
           debtSummary || undefined,
           kpi,
           topItems,
+          `daily-report-${date.toISOString().split('T')[0]}.xlsx`,
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           {
             weekly: weekly.kpi,
             monthly: monthly.kpi,
@@ -145,13 +147,22 @@ export class SchedulerService {
     console.log('Manually triggering daily report generation...');
     
     try {
-      const pdfBuffer = await this.pdfService.generateDailyReport();
+      const excelBuffer = await this.reportService.generateExcelReport();
       const debtSummary = await this.getDebtSummary();
       const { kpi, topItems } = await this.computeDailyKPIs(new Date());
       
       if (recipientEmail) {
         // Send to specific email for testing
-        const success = await this.emailService.sendDailyReport(recipientEmail, pdfBuffer, new Date(), debtSummary || undefined, kpi, topItems);
+        const success = await this.emailService.sendDailyReport(
+          recipientEmail, 
+          excelBuffer, 
+          new Date(), 
+          debtSummary || undefined, 
+          kpi, 
+          topItems,
+          `daily-report-${new Date().toISOString().split('T')[0]}.xlsx`,
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        );
         if (success) {
           console.log(`Test report sent successfully to ${recipientEmail}`);
         } else {

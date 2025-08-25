@@ -5,14 +5,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SchedulerService = void 0;
 const node_cron_1 = __importDefault(require("node-cron"));
-const pdfService_1 = require("./pdfService");
+const professionalReportService_1 = require("./professionalReportService");
 const emailService_1 = require("./emailService");
 const prisma_1 = __importDefault(require("../lib/prisma"));
 const date_fns_1 = require("date-fns");
 class SchedulerService {
     constructor() {
         this.isRunning = false;
-        this.pdfService = new pdfService_1.PDFService();
+        this.reportService = new professionalReportService_1.ProfessionalReportService();
         this.emailService = new emailService_1.EmailService();
     }
     async initialize() {
@@ -50,9 +50,9 @@ class SchedulerService {
         }
         this.isRunning = true;
         try {
-            console.log('Generating daily report PDF...');
-            const pdfBuffer = await this.pdfService.generateDailyReport(date);
-            console.log('PDF generated successfully, sending emails...');
+            console.log('Generating daily report Excel...');
+            const excelBuffer = await this.reportService.generateExcelReport(date);
+            console.log('Excel report generated successfully, sending emails...');
             // Get summaries
             const debtSummary = await this.getDebtSummary();
             const { kpi, topItems } = await this.computeDailyKPIs(date);
@@ -80,7 +80,7 @@ class SchedulerService {
                 return;
             }
             // Send report to each admin user
-            const emailPromises = adminUsers.map(user => this.emailService.sendDailyReport(user.email, pdfBuffer, date, debtSummary || undefined, kpi, topItems, {
+            const emailPromises = adminUsers.map(user => this.emailService.sendDailyReport(user.email, excelBuffer, date, debtSummary || undefined, kpi, topItems, `daily-report-${date.toISOString().split('T')[0]}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', {
                 weekly: weekly.kpi,
                 monthly: monthly.kpi,
                 inventory: inventorySummary,
@@ -116,12 +116,12 @@ class SchedulerService {
     async triggerDailyReport(recipientEmail) {
         console.log('Manually triggering daily report generation...');
         try {
-            const pdfBuffer = await this.pdfService.generateDailyReport();
+            const excelBuffer = await this.reportService.generateExcelReport();
             const debtSummary = await this.getDebtSummary();
             const { kpi, topItems } = await this.computeDailyKPIs(new Date());
             if (recipientEmail) {
                 // Send to specific email for testing
-                const success = await this.emailService.sendDailyReport(recipientEmail, pdfBuffer, new Date(), debtSummary || undefined, kpi, topItems);
+                const success = await this.emailService.sendDailyReport(recipientEmail, excelBuffer, new Date(), debtSummary || undefined, kpi, topItems, `daily-report-${new Date().toISOString().split('T')[0]}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 if (success) {
                     console.log(`Test report sent successfully to ${recipientEmail}`);
                 }
