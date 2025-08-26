@@ -5,10 +5,12 @@ import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Views } from "@/components/sales/Views";
 import { useNavigate } from "react-router-dom";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { SearchSales } from "@/components/sales/SearchSales";
 
 export default function SalesManagement() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [searchTerm, setSearchTerm] = useState("");
+  const [analyticsSearchTerm, setAnalyticsSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState("all");
   const [isMounted, setIsMounted] = useState(false);
   const navigate = useNavigate();
@@ -97,13 +99,24 @@ export default function SalesManagement() {
             </Button>
           </div>
 
-          {/* Views Component */}
-          <Views
-            searchTerm={searchTerm}
-            selectedUser={selectedUser}
-            onSearchChange={setSearchTerm}
-            onUserChange={setSelectedUser}
-          />
+          {/* Tabs */}
+          <Tabs defaultValue="analytics" className="w-full">
+            <TabsList>
+              <TabsTrigger value="analytics">Sales Analytics</TabsTrigger>
+              <TabsTrigger value="search">Search Sales</TabsTrigger>
+            </TabsList>
+            <TabsContent value="analytics" forceMount>
+              <Views
+                searchTerm={analyticsSearchTerm}
+                selectedUser={selectedUser}
+                onSearchChange={setAnalyticsSearchTerm}
+                onUserChange={setSelectedUser}
+              />
+            </TabsContent>
+            <TabsContent value="search" forceMount>
+              <SearchSales />
+            </TabsContent>
+          </Tabs>
         </div>
       </Layout>
     );
