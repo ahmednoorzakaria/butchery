@@ -6,7 +6,7 @@ import { useState } from "react";
 
 const primaryItems = [
   { name: "Inventory", href: "/inventory", icon: Package },
-  { name: "Sale Creation", href: "/sale-creation", icon: PlusCircle },
+  { name: "Sale ", href: "/sale-creation", icon: PlusCircle },
   { name: "Sale Management", href: "/sales", icon: List },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Expenses", href: "/expenses", icon: Receipt },
