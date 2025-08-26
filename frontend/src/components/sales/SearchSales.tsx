@@ -42,6 +42,8 @@ export function SearchSales() {
 	const [error, setError] = useState<string | null>(null);
 	const isAdmin = localStorage.getItem("user_role") === "ADMIN";
 
+	const detectedType = classifySearch(searchInput || "");
+
 	const { data, isFetching } = useQuery({
 		queryKey: ["sales-search-standalone", triggeredTerm],
 		queryFn: async () => {
@@ -90,6 +92,11 @@ export function SearchSales() {
 								className="pl-10"
 							/>
 							{error && <p className="text-sm text-destructive mt-2">{error}</p>}
+							{!error && searchInput && (
+								<p className="text-xs text-muted-foreground mt-2">
+									Detected: {detectedType === 'phone' ? 'Phone (exact match)' : detectedType === 'id' ? 'Sale ID (exact match)' : 'Name/Phone (contains)'}
+								</p>
+							)}
 						</div>
 						<div className="flex gap-2">
 							<Button onClick={handleSearch} disabled={isFetching}>{isFetching ? 'Searching...' : 'Search'}</Button>

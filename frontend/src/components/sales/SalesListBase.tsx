@@ -129,7 +129,7 @@ export function SalesListBase({ sales, summary, title, isAdmin, isLoading, onCle
 											{sale.paymentType}
 										</Badge>
 									</div>
-									<p className="text-muted-foreground">{sale.customer.name}</p>
+									<p className="text-muted-foreground">{sale.customer.name}{sale.customer.phone ? ` • ${sale.customer.phone}` : ''}</p>
 									<div className="flex items-center space-x-4 mt-2 text-sm text-muted-foreground">
 										<span className="flex items-center">
 											<Calendar className="h-4 w-4 mr-1" />

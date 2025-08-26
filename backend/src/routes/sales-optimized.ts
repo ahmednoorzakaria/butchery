@@ -82,14 +82,17 @@ router.get("/sales", authenticateToken, async (req, res) => {
 
     if (search && search.trim()) {
       const searchTerm = search.trim();
-      const saleId = parseInt(searchTerm);
-      if (!isNaN(saleId)) {
-        whereClause.OR = [
-          { id: saleId },
-          { customer: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
-          { customer: { is: { phone: { contains: searchTerm, mode: 'insensitive' } } } },
-        ];
+      const isPhone = /^07\d{8}$/.test(searchTerm);
+      const saleId = /^\d+$/.test(searchTerm) ? parseInt(searchTerm) : NaN;
+
+      if (isPhone) {
+        // Exact phone match when pattern matches 07XXXXXXXX
+        whereClause.customer = { is: { phone: { equals: searchTerm } } };
+      } else if (!isNaN(saleId)) {
+        // Numeric but not phone: search by exact sale ID only
+        whereClause.id = saleId;
       } else {
+        // Text input: search by customer name or phone containing the term
         whereClause.OR = [
           { customer: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
           { customer: { is: { phone: { contains: searchTerm, mode: 'insensitive' } } } },
@@ -311,20 +314,15 @@ router.get("/sales/all", authenticateToken, async (req, res) => {
 
     if (search && search.trim()) {
       const searchTerm = search.trim();
-      const saleId = parseInt(searchTerm);
+      const isPhone = /^07\d{8}$/.test(searchTerm);
+      const saleId = /^\d+$/.test(searchTerm) ? parseInt(searchTerm) : NaN;
       
-      if (!isNaN(saleId)) {
-        whereClause.OR = [
-          { id: saleId },
-          { 
-            customer: { 
-              OR: [
-                { name: { contains: searchTerm, mode: 'insensitive' } },
-                { phone: { contains: searchTerm, mode: 'insensitive' } }
-              ]
-            } 
-          }
-        ];
+      if (isPhone) {
+        // Exact phone match when pattern matches 07XXXXXXXX
+        whereClause.customer = { is: { phone: { equals: searchTerm } } };
+      } else if (!isNaN(saleId)) {
+        // Numeric but not phone: search by exact sale ID only
+        whereClause.id = saleId;
       } else {
         whereClause.OR = [
           { customer: { name: { contains: searchTerm, mode: 'insensitive' } } },

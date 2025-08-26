@@ -509,13 +509,12 @@ router.get("/sales", authenticateToken, async (req, res) => {
     // Add search functionality
     if (search && search.trim()) {
       const searchTerm = search.trim();
-      const saleId = parseInt(searchTerm);
-      if (!isNaN(saleId)) {
-        whereClause.OR = [
-          { id: saleId },
-          { customer: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
-          { customer: { is: { phone: { contains: searchTerm, mode: 'insensitive' } } } },
-        ];
+      const isPhone = /^07\d{8}$/.test(searchTerm);
+      const saleId = /^\d+$/.test(searchTerm) ? parseInt(searchTerm) : NaN;
+      if (isPhone) {
+        whereClause.customer = { is: { phone: { equals: searchTerm } } };
+      } else if (!isNaN(saleId)) {
+        whereClause.id = saleId;
       } else {
         whereClause.OR = [
           { customer: { is: { name: { contains: searchTerm, mode: 'insensitive' } } } },
