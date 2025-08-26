@@ -10,6 +10,6 @@ const app_1 = __importDefault(require("../app"));
 const http_1 = __importDefault(require("http"));
 const port = parseInt(process.env.PORT || '3005', 10); // ✅ Ensures it's a number
 const server = http_1.default.createServer(app_1.default);
-server.listen(port, '127.0.0.1', () => {
-    console.log(`Server running on http://127.0.0.1:${port}`);
+server.listen(port, '0.0.0.0', () => {
+    console.log(`Server running on http://0.0.0.0:${port}`);
 });
