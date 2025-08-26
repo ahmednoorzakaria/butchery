@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from "@/lib/utils";
 import { Receipt as ReceiptComponent } from "./Receipt";
 import { EditSaleDialog } from "./EditSaleDialog";
+import React from "react";
 
 interface SaleItem {
 	itemId: number;
@@ -50,7 +51,7 @@ interface Sale {
 export interface SalesListBaseProps {
 	sales: Sale[];
 	summary?: { totalSales?: number; totalAmount?: number } | null;
-	title: string;
+	title: string | React.ReactNode;
 	isAdmin: boolean;
 	isLoading?: boolean;
 	onClear?: () => void;

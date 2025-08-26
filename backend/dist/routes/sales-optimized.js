@@ -242,12 +242,14 @@ router.get("/sales/all", authMiddleware_1.authenticateToken, async (req, res) =>
             startDate = (0, date_fns_1.parseISO)(start);
         }
         else {
-            startDate = (0, date_fns_1.subDays)(new Date(), 30); // Default to last 30 days
+            // Default to show ALL sales, not just last 30 days
+            startDate = new Date('2020-01-01'); // Reasonable start date for all sales
         }
         if (end && (0, date_fns_1.isValid)((0, date_fns_1.parseISO)(end))) {
             endDate = (0, date_fns_1.endOfDay)((0, date_fns_1.parseISO)(end));
         }
         else {
+            // Default to current date
             endDate = (0, date_fns_1.endOfDay)(new Date());
         }
         const whereClause = {

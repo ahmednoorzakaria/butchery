@@ -299,12 +299,14 @@ router.get("/sales/all", authenticateToken, async (req, res) => {
     if (start && isValid(parseISO(start))) {
       startDate = parseISO(start);
     } else {
-      startDate = subDays(new Date(), 30); // Default to last 30 days
+      // Default to show ALL sales, not just last 30 days
+      startDate = new Date('2020-01-01'); // Reasonable start date for all sales
     }
     
     if (end && isValid(parseISO(end))) {
       endDate = endOfDay(parseISO(end));
     } else {
+      // Default to current date
       endDate = endOfDay(new Date());
     }
 

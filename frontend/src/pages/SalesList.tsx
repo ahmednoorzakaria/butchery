@@ -10,8 +10,6 @@ import { SearchSales } from "@/components/sales/SearchSales";
 
 export default function SalesManagement() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [analyticsSearchTerm, setAnalyticsSearchTerm] = useState("");
-  const [selectedUser, setSelectedUser] = useState("all");
   const [isMounted, setIsMounted] = useState(false);
   const navigate = useNavigate();
 
@@ -99,21 +97,18 @@ export default function SalesManagement() {
             </Button>
           </div>
 
-          {/* Tabs */}
-          <Tabs defaultValue="analytics" className="w-full">
-            <TabsList>
-              <TabsTrigger value="analytics">Sales Analytics</TabsTrigger>
+          {/* Main Tabs */}
+          <Tabs defaultValue="time-based" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="time-based">Time-Based View</TabsTrigger>
               <TabsTrigger value="search">Search Sales</TabsTrigger>
             </TabsList>
-            <TabsContent value="analytics" forceMount>
-              <Views
-                searchTerm={analyticsSearchTerm}
-                selectedUser={selectedUser}
-                onSearchChange={setAnalyticsSearchTerm}
-                onUserChange={setSelectedUser}
-              />
+            
+            <TabsContent value="time-based" className="mt-6">
+              <Views />
             </TabsContent>
-            <TabsContent value="search" forceMount>
+            
+            <TabsContent value="search" className="mt-6">
               <SearchSales />
             </TabsContent>
           </Tabs>
