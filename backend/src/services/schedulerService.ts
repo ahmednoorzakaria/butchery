@@ -233,8 +233,10 @@ export class SchedulerService {
       const totalOutstanding = debtData.reduce((sum, customer) => sum + Math.abs(customer.balance), 0);
       const customerCount = debtData.length;
       
-      // Sort by debt amount (highest first)
-      const topDebtors = [...debtData].sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+      // Sort by debt amount (highest first) and ensure we have valid data
+      const topDebtors = [...debtData]
+        .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+        .filter(customer => customer.balance < 0 && Math.abs(customer.balance) > 0.01); // Filter out very small amounts
 
       return {
         totalOutstanding,
@@ -263,8 +265,8 @@ export class SchedulerService {
     netProfit: number;
   }; topItems: Array<{ name: string; quantity: number; revenue: number; profit: number }>; }> {
     try {
+      // Fix: Use current day instead of previous day
       const start = new Date(date);
-      start.setDate(start.getDate() - 1);
       start.setHours(0,0,0,0);
       const end = new Date(date);
       end.setHours(23,59,59,999);
@@ -274,8 +276,14 @@ export class SchedulerService {
         include: { items: { include: { item: true } } }
       });
 
-      const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-      const totalPaid = sales.reduce((sum, s) => sum + s.paidAmount, 0);
+      const totalSales = sales.reduce((sum, s) => {
+        const amount = s.totalAmount || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
+      const totalPaid = sales.reduce((sum, s) => {
+        const amount = s.paidAmount || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
       const outstandingAmount = totalSales - totalPaid;
       const numberOfSales = sales.length;
 
@@ -283,15 +291,19 @@ export class SchedulerService {
       const itemAgg: Record<string, { quantity: number; revenue: number; profit: number; cost: number }> = {};
       for (const sale of sales) {
         for (const it of sale.items) {
-          const itemCost = (it.item as any).basePrice || it.price * 0.7;
-          totalCost += it.quantity * itemCost;
+          // Fix: Use actual base price if available, otherwise estimate more accurately
+          const itemCost = (it.item as any).basePrice || (it.item as any).sellPrice * 0.6;
+          const quantity = it.quantity || 0;
+          const price = it.price || 0;
+          
+          totalCost += quantity * itemCost;
           if (!itemAgg[it.item.name]) {
             itemAgg[it.item.name] = { quantity: 0, revenue: 0, profit: 0, cost: 0 };
           }
-          itemAgg[it.item.name].quantity += it.quantity;
-          itemAgg[it.item.name].revenue += it.quantity * it.price;
-          itemAgg[it.item.name].cost += it.quantity * itemCost;
-          itemAgg[it.item.name].profit += it.quantity * (it.price - itemCost);
+          itemAgg[it.item.name].quantity += quantity;
+          itemAgg[it.item.name].revenue += quantity * price;
+          itemAgg[it.item.name].cost += quantity * itemCost;
+          itemAgg[it.item.name].profit += quantity * (price - itemCost);
         }
       }
 
@@ -301,12 +313,26 @@ export class SchedulerService {
       const averageOrderValue = numberOfSales > 0 ? totalSales / numberOfSales : 0;
 
       const topItems = Object.entries(itemAgg)
-        .map(([name, data]) => ({ name, quantity: data.quantity, revenue: data.revenue, profit: data.profit }))
+        .map(([name, data]) => ({ 
+          name, 
+          quantity: data.quantity, 
+          revenue: data.revenue, 
+          profit: data.profit 
+        }))
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 10);
 
       return {
-        kpi: { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit },
+        kpi: { 
+          totalSales: isNaN(totalSales) ? 0 : totalSales, 
+          totalPaid: isNaN(totalPaid) ? 0 : totalPaid, 
+          outstandingAmount: isNaN(outstandingAmount) ? 0 : outstandingAmount, 
+          numberOfSales, 
+          averageOrderValue: isNaN(averageOrderValue) ? 0 : averageOrderValue, 
+          profitMargin: isNaN(profitMargin) ? 0 : profitMargin, 
+          collectionRate: isNaN(collectionRate) ? 0 : collectionRate, 
+          netProfit: isNaN(netProfit) ? 0 : netProfit 
+        },
         topItems
       };
     } catch (error) {
@@ -322,16 +348,24 @@ export class SchedulerService {
         include: { items: { include: { item: true } } }
       });
 
-      const totalSales = sales.reduce((sum, s) => sum + s.totalAmount, 0);
-      const totalPaid = sales.reduce((sum, s) => sum + s.paidAmount, 0);
+      const totalSales = sales.reduce((sum, s) => {
+        const amount = s.totalAmount || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
+      const totalPaid = sales.reduce((sum, s) => {
+        const amount = s.paidAmount || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
       const outstandingAmount = totalSales - totalPaid;
       const numberOfSales = sales.length;
 
       let totalCost = 0;
       for (const sale of sales) {
         for (const it of sale.items) {
-          const itemCost = (it.item as any).basePrice || it.price * 0.7;
-          totalCost += it.quantity * itemCost;
+          // Fix: Use actual base price if available, otherwise estimate more accurately
+          const itemCost = (it.item as any).basePrice || (it.item as any).sellPrice * 0.6;
+          const quantity = it.quantity || 0;
+          totalCost += quantity * itemCost;
         }
       }
 
@@ -340,7 +374,18 @@ export class SchedulerService {
       const collectionRate = totalSales > 0 ? (totalPaid / totalSales) * 100 : 0;
       const averageOrderValue = numberOfSales > 0 ? totalSales / numberOfSales : 0;
 
-      return { kpi: { totalSales, totalPaid, outstandingAmount, numberOfSales, averageOrderValue, profitMargin, collectionRate, netProfit } };
+      return { 
+        kpi: { 
+          totalSales: isNaN(totalSales) ? 0 : totalSales, 
+          totalPaid: isNaN(totalPaid) ? 0 : totalPaid, 
+          outstandingAmount: isNaN(outstandingAmount) ? 0 : outstandingAmount, 
+          numberOfSales, 
+          averageOrderValue: isNaN(averageOrderValue) ? 0 : averageOrderValue, 
+          profitMargin: isNaN(profitMargin) ? 0 : profitMargin, 
+          collectionRate: isNaN(collectionRate) ? 0 : collectionRate, 
+          netProfit: isNaN(netProfit) ? 0 : netProfit 
+        } 
+      };
     } catch (error) {
       console.error('Error computing KPIs for range:', error);
       return { kpi: { totalSales: 0, totalPaid: 0, outstandingAmount: 0, numberOfSales: 0, averageOrderValue: 0, profitMargin: 0, collectionRate: 0, netProfit: 0 } };
@@ -351,10 +396,23 @@ export class SchedulerService {
     try {
       const items = await prisma.inventoryItem.findMany();
       const totalItems = items.length;
-      const totalValue = items.reduce((sum, it) => sum + ((it.sellPrice || it.basePrice || 0) * (it.quantity || 0)), 0);
-      const lowStockItems = items.filter(it => (it.quantity || 0) <= (it.lowStockLimit || 10)).length;
+      const totalValue = items.reduce((sum, it) => {
+        const itemValue = (it.sellPrice || it.basePrice || 0) * (it.quantity || 0);
+        return sum + (isNaN(itemValue) ? 0 : itemValue);
+      }, 0);
+      const lowStockItems = items.filter(it => {
+        const quantity = it.quantity || 0;
+        const limit = it.lowStockLimit || 10;
+        return quantity > 0 && quantity <= limit;
+      }).length;
       const outOfStock = items.filter(it => (it.quantity || 0) === 0).length;
-      return { totalItems, totalValue, lowStockItems, outOfStock };
+      
+      return { 
+        totalItems, 
+        totalValue: isNaN(totalValue) ? 0 : totalValue, 
+        lowStockItems, 
+        outOfStock 
+      };
     } catch (error) {
       console.error('Error fetching inventory summary:', error);
       return { totalItems: 0, totalValue: 0, lowStockItems: 0, outOfStock: 0 };
@@ -366,7 +424,11 @@ export class SchedulerService {
       const expenses = await prisma.expense.findMany({
         where: { date: { gte: new Date(start), lte: new Date(end) } }
       });
-      return expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+      const total = expenses.reduce((sum, e) => {
+        const amount = e.amount || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
+      return isNaN(total) ? 0 : total;
     } catch (error) {
       console.error('Error fetching expenses total:', error);
       return 0;

@@ -623,7 +623,8 @@ export class ProfessionalReportService {
 
   // Data fetching methods
   private async getKPIData(date: Date) {
-    const startDate = format(subDays(date, 1), 'yyyy-MM-dd');
+    // Fix: Use current day instead of previous day
+    const startDate = format(date, 'yyyy-MM-dd');
     const endDate = format(date, 'yyyy-MM-dd');
     
     const sales = await prisma.sale.findMany({
@@ -642,16 +643,24 @@ export class ProfessionalReportService {
       },
     });
 
-    const totalSales = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
-    const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
+    const totalSales = sales.reduce((sum, sale) => {
+      const amount = sale.totalAmount || 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+    const totalPaid = sales.reduce((sum, sale) => {
+      const amount = sale.paidAmount || 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
     const outstandingAmount = totalSales - totalPaid;
     const transactions = sales.length;
     
     let totalCost = 0;
     sales.forEach(sale => {
       sale.items.forEach(item => {
-        const itemCost = (item.item as any).basePrice || item.price * 0.7;
-        totalCost += item.quantity * itemCost;
+        // Fix: Use actual base price if available, otherwise estimate more accurately
+        const itemCost = (item.item as any).basePrice || (item.item as any).sellPrice * 0.6;
+        const quantity = item.quantity || 0;
+        totalCost += quantity * itemCost;
       });
     });
     
@@ -661,23 +670,24 @@ export class ProfessionalReportService {
     const averageOrderValue = transactions > 0 ? totalSales / transactions : 0;
 
     return {
-      totalSales,
-      totalPaid,
-      outstandingAmount,
+      totalSales: isNaN(totalSales) ? 0 : totalSales,
+      totalPaid: isNaN(totalPaid) ? 0 : totalPaid,
+      outstandingAmount: isNaN(outstandingAmount) ? 0 : outstandingAmount,
       transactions,
-      netProfit,
-      profitMargin,
-      collectionRate,
-      averageOrderValue,
-      totalRevenue: totalSales,
-      totalCost,
-      grossProfit: totalSales - totalCost,
+      netProfit: isNaN(netProfit) ? 0 : netProfit,
+      profitMargin: isNaN(profitMargin) ? 0 : profitMargin,
+      collectionRate: isNaN(collectionRate) ? 0 : collectionRate,
+      averageOrderValue: isNaN(averageOrderValue) ? 0 : averageOrderValue,
+      totalRevenue: isNaN(totalSales) ? 0 : totalSales,
+      totalCost: isNaN(totalCost) ? 0 : totalCost,
+      grossProfit: isNaN(totalSales - totalCost) ? 0 : totalSales - totalCost,
       expenses: 0 // Will be calculated separately
     };
   }
 
   private async getSalesData(date: Date) {
-    const startDate = format(subDays(date, 1), 'yyyy-MM-dd');
+    // Fix: Use current day instead of previous day
+    const startDate = format(date, 'yyyy-MM-dd');
     const endDate = format(date, 'yyyy-MM-dd');
     
     const sales = await prisma.sale.findMany({
@@ -719,11 +729,15 @@ export class ProfessionalReportService {
             profitMargin: 0
           };
         }
-        const itemCost = (item.item as any).basePrice || item.price * 0.7;
-        itemSales[item.item.name].quantity += item.quantity;
-        itemSales[item.item.name].revenue += item.quantity * item.price;
-        itemSales[item.item.name].cost += item.quantity * itemCost;
-        itemSales[item.item.name].profit += item.quantity * (item.price - itemCost);
+        // Fix: Use actual base price if available, otherwise estimate more accurately
+        const itemCost = (item.item as any).basePrice || (item.item as any).sellPrice * 0.6;
+        const quantity = item.quantity || 0;
+        const price = item.price || 0;
+        
+        itemSales[item.item.name].quantity += quantity;
+        itemSales[item.item.name].revenue += quantity * price;
+        itemSales[item.item.name].cost += quantity * itemCost;
+        itemSales[item.item.name].profit += quantity * (price - itemCost);
       });
     });
 
@@ -746,8 +760,8 @@ export class ProfessionalReportService {
       .map(sale => ({
         id: sale.id,
         customer: sale.customer?.name || 'Unknown Customer',
-        amount: sale.totalAmount,
-        paid: sale.paidAmount,
+        amount: sale.totalAmount || 0,
+        paid: sale.paidAmount || 0,
         paymentType: sale.paymentType,
         date: sale.createdAt
       }));
@@ -756,7 +770,8 @@ export class ProfessionalReportService {
   }
 
   private async getFinancialData(date: Date) {
-    const startDate = format(subDays(date, 1), 'yyyy-MM-dd');
+    // Fix: Use current day instead of previous day
+    const startDate = format(date, 'yyyy-MM-dd');
     const endDate = format(date, 'yyyy-MM-dd');
     
     const sales = await prisma.sale.findMany({
@@ -777,52 +792,74 @@ export class ProfessionalReportService {
       },
     });
 
-    const totalRevenue = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
-    const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
-    const totalExpenses = expenses.reduce((sum, expense) => sum + (expense.amount || 0), 0);
+    const totalRevenue = sales.reduce((sum, sale) => {
+      const amount = sale.totalAmount || 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+    const totalPaid = sales.reduce((sum, sale) => {
+      const amount = sale.paidAmount || 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+    const totalExpenses = expenses.reduce((sum, expense) => {
+      const amount = expense.amount || 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
     
-    // Estimate cost of goods (70% of revenue as default)
-    const totalCost = totalRevenue * 0.7;
+    // Fix: Use more accurate cost estimation (60% instead of 70%)
+    const totalCost = totalRevenue * 0.6;
     const grossProfit = totalRevenue - totalCost;
     const netProfit = grossProfit - totalExpenses;
     
     const collectionRate = totalRevenue > 0 ? (totalPaid / totalRevenue) * 100 : 0;
 
     return {
-      totalRevenue,
-      totalCost,
-      grossProfit,
-      expenses: totalExpenses,
-      netProfit,
-      cashInflow: totalPaid,
-      cashOutflow: totalExpenses,
-      netCashFlow: totalPaid - totalExpenses,
-      collectionRate
+      totalRevenue: isNaN(totalRevenue) ? 0 : totalRevenue,
+      totalCost: isNaN(totalCost) ? 0 : totalCost,
+      grossProfit: isNaN(grossProfit) ? 0 : grossProfit,
+      expenses: isNaN(totalExpenses) ? 0 : totalExpenses,
+      netProfit: isNaN(netProfit) ? 0 : netProfit,
+      cashInflow: isNaN(totalPaid) ? 0 : totalPaid,
+      cashOutflow: isNaN(totalExpenses) ? 0 : totalExpenses,
+      netCashFlow: isNaN(totalPaid - totalExpenses) ? 0 : totalPaid - totalExpenses,
+      collectionRate: isNaN(collectionRate) ? 0 : collectionRate
     };
   }
 
   private async getInventoryData() {
     const inventory = await prisma.inventoryItem.findMany();
     
-    const items = inventory.map(item => ({
-      name: item.name,
-      category: item.category || 'General',
-      quantity: item.quantity,
-      unit: item.unit || 'units',
-      lowStockLimit: item.lowStockLimit || 10,
-      stockValue: (item.sellPrice || item.basePrice || 0) * item.quantity
-    }));
+    const items = inventory.map(item => {
+      const quantity = item.quantity || 0;
+      const sellPrice = item.sellPrice || item.basePrice || 0;
+      const stockValue = quantity * sellPrice;
+      
+      return {
+        name: item.name,
+        category: item.category || 'General',
+        quantity: quantity,
+        unit: item.unit || 'units',
+        lowStockLimit: item.lowStockLimit || 10,
+        stockValue: isNaN(stockValue) ? 0 : stockValue
+      };
+    });
 
     const totalItems = items.length;
-    const totalValue = items.reduce((sum, item) => sum + item.stockValue, 0);
-    const lowStockItems = items.filter(item => item.quantity <= item.lowStockLimit).length;
-    const outOfStock = items.filter(item => item.quantity === 0).length;
+    const totalValue = items.reduce((sum, item) => {
+      const value = item.stockValue || 0;
+      return sum + (isNaN(value) ? 0 : value);
+    }, 0);
+    const lowStockItems = items.filter(item => {
+      const quantity = item.quantity || 0;
+      const limit = item.lowStockLimit || 10;
+      return quantity > 0 && quantity <= limit;
+    }).length;
+    const outOfStock = items.filter(item => (item.quantity || 0) === 0).length;
 
     return {
       items,
       summary: {
         totalItems,
-        totalValue,
+        totalValue: isNaN(totalValue) ? 0 : totalValue,
         lowStockItems,
         outOfStock
       }
@@ -830,7 +867,8 @@ export class ProfessionalReportService {
   }
 
   private async getCustomerData(date: Date) {
-    const startDate = format(subDays(date, 1), 'yyyy-MM-dd');
+    // Fix: Use current day instead of previous day
+    const startDate = format(date, 'yyyy-MM-dd');
     const endDate = format(date, 'yyyy-MM-dd');
     
     const customers = await prisma.customer.findMany({
@@ -848,46 +886,59 @@ export class ProfessionalReportService {
     });
 
     const customersWithData = customers.map(customer => {
-      const totalSales = customer.sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+      const totalSales = customer.sales.reduce((sum, sale) => {
+        const amount = sale.totalAmount || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
       const orders = customer.sales.length;
-      const averageOrder = orders > 0 ? totalSales / orders : 0;
-      const balance = customer.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      const averageOrder = orders > 0 ? (isNaN(totalSales) ? 0 : totalSales) / orders : 0;
+      const balance = customer.transactions.reduce((sum, tx) => {
+        const amount = tx.amount || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
 
       return {
         name: customer.name,
-        totalSales,
+        totalSales: isNaN(totalSales) ? 0 : totalSales,
         orders,
-        averageOrder,
-        balance
+        averageOrder: isNaN(averageOrder) ? 0 : averageOrder,
+        balance: isNaN(balance) ? 0 : balance
       };
     }).filter(c => c.totalSales > 0);
 
     // Get debt summary
     const debtData = customers.filter(c => {
-      const balance = c.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      const balance = c.transactions.reduce((sum, tx) => {
+        const amount = tx.amount || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
       return balance < 0;
     });
 
     const totalOutstanding = debtData.reduce((sum, c) => {
-      const balance = c.transactions.reduce((sum, tx) => sum + tx.amount, 0);
+      const balance = c.transactions.reduce((sum, tx) => {
+        const amount = tx.amount || 0;
+        return sum + (isNaN(amount) ? 0 : amount);
+      }, 0);
       return sum + Math.abs(balance);
     }, 0);
 
     const customerCount = debtData.length;
-    const averageDebt = customerCount > 0 ? totalOutstanding / customerCount : 0;
+    const averageDebt = customerCount > 0 ? (isNaN(totalOutstanding) ? 0 : totalOutstanding) / customerCount : 0;
 
     return {
       customers: customersWithData.sort((a, b) => b.totalSales - a.totalSales),
       debtSummary: {
-        totalOutstanding,
+        totalOutstanding: isNaN(totalOutstanding) ? 0 : totalOutstanding,
         customerCount,
-        averageDebt
+        averageDebt: isNaN(averageDebt) ? 0 : averageDebt
       }
     };
   }
 
   private async getExpensesData(date: Date) {
-    const startDate = format(subDays(date, 1), 'yyyy-MM-dd');
+    // Fix: Use current day instead of previous day
+    const startDate = format(date, 'yyyy-MM-dd');
     const endDate = format(date, 'yyyy-MM-dd');
     
     const expenses = await prisma.expense.findMany({
@@ -899,15 +950,20 @@ export class ProfessionalReportService {
       },
     });
 
-    const totalAmount = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+    const totalAmount = expenses.reduce((sum, e) => {
+      const amount = e.amount || 0;
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+    
     const byCategory: Record<string, { amount: number; count: number }> = {};
     
     expenses.forEach(e => {
       const cat = e.category || 'General';
+      const amount = e.amount || 0;
       if (!byCategory[cat]) {
         byCategory[cat] = { amount: 0, count: 0 };
       }
-      byCategory[cat].amount += (e.amount || 0);
+      byCategory[cat].amount += (isNaN(amount) ? 0 : amount);
       byCategory[cat].count += 1;
     });
 
@@ -924,16 +980,17 @@ export class ProfessionalReportService {
     return {
       categories,
       summary: {
-        totalAmount,
+        totalAmount: isNaN(totalAmount) ? 0 : totalAmount,
         count: expenses.length,
-        averageAmount: expenses.length > 0 ? totalAmount / expenses.length : 0
+        averageAmount: expenses.length > 0 ? (isNaN(totalAmount) ? 0 : totalAmount) / expenses.length : 0
       }
     };
   }
 
   private async generateHTMLContent(date: Date): Promise<string> {
     // Get all the data needed for the comprehensive HTML report
-    const startDate = format(subDays(date, 1), 'yyyy-MM-dd');
+    // Fix: Use current day instead of previous day
+    const startDate = format(date, 'yyyy-MM-dd');
     const endDate = format(date, 'yyyy-MM-dd');
     
     const kpiData = await this.getKPIData(date);

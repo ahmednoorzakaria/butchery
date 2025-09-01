@@ -18,7 +18,11 @@ const dailyReports_1 = __importDefault(require("./routes/dailyReports"));
 const expenses_1 = __importDefault(require("./routes/expenses"));
 const professionalReports_1 = __importDefault(require("./routes/professionalReports"));
 const app = (0, express_1.default)();
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:8080';
+//const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:8080';
+const allowedOrigin = [
+    "http://localhost:8080",
+    "http://192.168.100.158:8080"
+];
 const corsOptions = {
     origin: allowedOrigin,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],

@@ -16,7 +16,12 @@ import professionalReportsRouter from './routes/professionalReports';
 
 const app = express();
 
-const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:8080';
+//const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:8080';
+
+const allowedOrigin = [
+  "http://localhost:8080"
+  ,"http://192.168.100.158:8080"
+];
 
 const corsOptions = {
   origin: allowedOrigin,
